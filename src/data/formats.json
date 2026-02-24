@@ -1,0 +1,20 @@
+[
+  {
+    "id": "fmt-01",
+    "title": "FIR (सामान्य)",
+    "description": "सामान्य FIR साचा",
+    "popularity": 100
+  },
+  {
+    "id": "fmt-02",
+    "title": "नामपत्रा",
+    "description": "नामपत्रा साचा",
+    "popularity": 90
+  },
+  {
+    "id": "fmt-03",
+    "title": "चलान",
+    "description": "चलान साचा",
+    "popularity": 80
+  }
+]
