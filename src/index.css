@@ -181,27 +181,48 @@
   }
 
   .dropdown-panel {
-    @apply absolute z-50 mt-1 w-full rounded-lg border border-border
+    @apply absolute z-50 mt-1.5 w-full rounded-xl border border-border
            max-h-60 overflow-auto;
     background: hsl(var(--popover));
     color: hsl(var(--popover-foreground));
-    box-shadow: 0 8px 30px hsl(var(--navy) / 0.12), 0 2px 8px hsl(var(--navy) / 0.06);
-    animation: dropdownSlide 0.2s ease-out;
+    box-shadow: 0 10px 40px hsl(var(--navy) / 0.10), 0 2px 10px hsl(var(--navy) / 0.05);
+    animation: dropdownReveal 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    backdrop-filter: blur(8px);
   }
 
-  @keyframes dropdownSlide {
-    from { opacity: 0; transform: translateY(-6px); }
-    to { opacity: 1; transform: translateY(0); }
+  .dropdown-panel-premium {
+    @apply absolute z-50 mt-1.5 w-full rounded-xl border border-border
+           max-h-60 overflow-auto py-1;
+    background: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+    box-shadow: 0 12px 48px hsl(var(--navy) / 0.12), 0 4px 12px hsl(var(--navy) / 0.06);
+    animation: dropdownReveal 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes dropdownReveal {
+    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
   }
 
   .dropdown-item {
-    @apply px-3 py-2.5 cursor-pointer transition-all duration-150;
+    @apply px-3.5 py-2.5 cursor-pointer transition-colors duration-150;
   }
 
   .dropdown-item:hover,
   .dropdown-item-active {
     background: hsl(var(--muted));
-    padding-left: 1rem;
+  }
+
+  .dropdown-item-premium {
+    @apply px-4 py-2.5 cursor-pointer transition-colors duration-150 text-sm;
+  }
+
+  .dropdown-item-premium:hover {
+    background: hsl(var(--muted));
+  }
+
+  .dropdown-item-premium:active {
+    background: hsl(var(--secondary));
   }
 
   .sync-scroll-panel {

@@ -9,6 +9,8 @@ const Index = () => {
   const api = useMockApi();
   const formats = useMemo(() => api.getFormats(), [api]);
   const presets = useMemo(() => api.getPresets(), [api]);
+  const [presetOpen, setPresetOpen] = useState(false);
+  const presetRef = useRef<HTMLDivElement>(null);
 
   const [formatId, setFormatId] = useState<string | null>(null);
   const [selectedSections, setSelectedSections] = useState<string[]>([]);
@@ -20,6 +22,17 @@ const Index = () => {
   const [error, setError] = useState<string | null>(null);
   const [lastChecked, setLastChecked] = useState<string | null>(null);
   const [instructionsOpen, setInstructionsOpen] = useState(true);
+
+  // Close preset dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (presetRef.current && !presetRef.current.contains(e.target as Node)) {
+        setPresetOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const originalRef = useRef<HTMLDivElement>(null);
   const correctedRef = useRef<HTMLDivElement>(null);
@@ -180,19 +193,31 @@ const Index = () => {
 
             {/* Control row */}
             <div className="flex flex-wrap items-center gap-3">
-              <div className="relative">
-                <select
+              <div className="relative" ref={presetRef}>
+                <button
                   id="preset_select"
-                  className="police-input pr-8 text-sm"
-                  onChange={e => e.target.value && handlePreset(e.target.value)}
-                  defaultValue=""
+                  className="police-input pr-8 text-sm text-left min-w-[180px] flex items-center justify-between gap-2"
+                  onClick={() => setPresetOpen(!presetOpen)}
                   aria-label="उदाहरण निवडा"
+                  aria-haspopup="listbox"
+                  aria-expanded={presetOpen}
                 >
-                  <option value="" disabled>उदाहरण निवडा</option>
-                  {presets.map(p => (
-                    <option key={p.id} value={p.id}>{p.title}</option>
-                  ))}
-                </select>
+                  <span className="text-muted-foreground">उदाहरण निवडा</span>
+                  <span className="text-xs text-muted-foreground">{presetOpen ? '▲' : '▼'}</span>
+                </button>
+                {presetOpen && (
+                  <div className="dropdown-panel-premium">
+                    {presets.map(p => (
+                      <button
+                        key={p.id}
+                        className="dropdown-item-premium w-full text-left"
+                        onClick={() => { handlePreset(p.id); setPresetOpen(false); }}
+                      >
+                        {p.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <button
