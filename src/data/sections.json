@@ -1,0 +1,23 @@
+{
+  "robbery": [
+    {
+      "section_id": "sec-392",
+      "display": "दरोडा",
+      "statute": "IPC 392"
+    }
+  ],
+  "cheating": [
+    {
+      "section_id": "sec-420",
+      "display": "फसवणूक",
+      "statute": "IPC 420"
+    }
+  ],
+  "assault": [
+    {
+      "section_id": "sec-354",
+      "display": "हल्ला",
+      "statute": "IPC 354"
+    }
+  ]
+}
