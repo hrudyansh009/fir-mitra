@@ -7,7 +7,7 @@ const Header = () => (
       <img
         src="/images/logo.png"
         alt="नाशिक शहर पोलीस लोगो"
-        className="h-12 w-12 rounded-full bg-white/10 object-contain"
+        className="h-14 w-14 rounded-full border-2 border-white/20 object-cover shadow-lg"
       />
       <div>
         <h1 className="text-[28px] font-bold leading-tight text-primary-foreground">

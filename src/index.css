@@ -78,25 +78,51 @@
 
 @layer components {
   .btn-police-primary {
-    @apply bg-primary text-primary-foreground font-bold px-6 py-2.5 rounded-md
-           transition-all duration-200 hover:opacity-90 
+    @apply bg-primary text-primary-foreground font-bold px-6 py-2.5 rounded-lg
+           transition-all duration-300 ease-out
            focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2
            disabled:opacity-50 disabled:cursor-not-allowed;
     border-bottom: 3px solid hsl(var(--saffron));
+    box-shadow: 0 2px 8px hsl(var(--navy) / 0.3);
+  }
+  .btn-police-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px hsl(var(--navy) / 0.4);
+  }
+  .btn-police-primary:active:not(:disabled) {
+    transform: translateY(0px);
+    box-shadow: 0 1px 4px hsl(var(--navy) / 0.3);
   }
 
   .btn-police-secondary {
-    @apply bg-secondary text-secondary-foreground font-bold px-5 py-2.5 rounded-md
-           border border-border transition-all duration-200 hover:bg-muted
+    @apply bg-secondary text-secondary-foreground font-bold px-5 py-2.5 rounded-lg
+           border border-border transition-all duration-300 ease-out
            focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2;
+  }
+  .btn-police-secondary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px hsl(var(--border) / 0.5);
+    background: hsl(var(--muted));
+  }
+  .btn-police-secondary:active {
+    transform: translateY(0px);
   }
 
   .btn-police-accent {
-    @apply font-bold px-4 py-2 rounded-md transition-all duration-200
+    @apply font-bold px-4 py-2 rounded-lg transition-all duration-300 ease-out
            focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2
            disabled:opacity-50 disabled:cursor-not-allowed;
     background: hsl(var(--saffron));
     color: hsl(var(--navy-dark));
+    box-shadow: 0 2px 8px hsl(var(--saffron) / 0.3);
+  }
+  .btn-police-accent:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px hsl(var(--saffron) / 0.4);
+    background: hsl(var(--saffron-light));
+  }
+  .btn-police-accent:active:not(:disabled) {
+    transform: translateY(0px);
   }
 
   .police-card {
@@ -104,11 +130,15 @@
   }
 
   .police-input {
-    @apply w-full rounded-md border border-input bg-background px-3 py-2
+    @apply w-full rounded-lg border border-input bg-background px-3.5 py-2.5
            text-foreground placeholder:text-muted-foreground
            focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1
-           transition-colors;
+           transition-all duration-200;
     font-family: 'Mangal', 'Noto Sans Devanagari', 'Mukta', sans-serif;
+    box-shadow: 0 1px 3px hsl(var(--border) / 0.3);
+  }
+  .police-input:focus {
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.12);
   }
 
   .police-textarea {
@@ -151,19 +181,27 @@
   }
 
   .dropdown-panel {
-    @apply absolute z-50 mt-1 w-full rounded-md border border-border shadow-lg
+    @apply absolute z-50 mt-1 w-full rounded-lg border border-border
            max-h-60 overflow-auto;
     background: hsl(var(--popover));
     color: hsl(var(--popover-foreground));
+    box-shadow: 0 8px 30px hsl(var(--navy) / 0.12), 0 2px 8px hsl(var(--navy) / 0.06);
+    animation: dropdownSlide 0.2s ease-out;
+  }
+
+  @keyframes dropdownSlide {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
   .dropdown-item {
-    @apply px-3 py-2 cursor-pointer transition-colors;
+    @apply px-3 py-2.5 cursor-pointer transition-all duration-150;
   }
 
   .dropdown-item:hover,
   .dropdown-item-active {
     background: hsl(var(--muted));
+    padding-left: 1rem;
   }
 
   .sync-scroll-panel {
