@@ -31,6 +31,7 @@ const Index = () => {
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [result, setResult] = useState<CheckResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [instructionsOpen, setInstructionsOpen] = useState(true);
 
   // Close preset dropdown on outside click
@@ -46,6 +47,7 @@ const Index = () => {
 
   const originalRef = useRef<HTMLDivElement>(null);
   const correctedRef = useRef<HTMLDivElement>(null);
+  const resultSectionRef = useRef<HTMLDivElement>(null);
 
   // Sync scroll
   const handleScroll = useCallback((source: 'original' | 'corrected') => {
@@ -64,12 +66,18 @@ const Index = () => {
   const [correctedDraft, setCorrectedDraft] = useState<string | null>(null);
 
   const handleCheck = useCallback(async () => {
-    if (!draft.trim()) return;
+    setValidationError(null);
+    if (!draft.trim()) {
+      setValidationError('कृपया मसुदा लिहा.');
+      return;
+    }
     setIsChecking(true);
     setError(null);
     setResult(null);
     setCorrectedDraft(null);
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
       const response = await fetch('http://127.0.0.1:5000/api/check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -78,13 +86,13 @@ const Index = () => {
           section: selectedSections.join(','),
           draft: draft,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       if (!response.ok) throw new Error('API error');
       const data = await response.json();
-      // Store corrected_draft in variable
       const corrected: string = data.corrected_draft || '';
       setCorrectedDraft(corrected);
-      // Also populate result for existing UI rendering
       setResult({
         corrected_draft: corrected,
         corrected_html: data.corrected_html || '',
@@ -97,8 +105,12 @@ const Index = () => {
         line_highlights: data.line_highlights || [],
         last_checked_iso: data.last_checked_iso || new Date().toISOString(),
       });
+      // Smooth scroll to result
+      setTimeout(() => {
+        resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
     } catch {
-      setError('त्रुटी — नेटवर्क समस्या. कृपया नंतर प्रयत्न करा.');
+      setError('त्रुटी — सर्व्हरशी संपर्क झाला नाही. कृपया पुन्हा प्रयत्न करा.');
     } finally {
       setIsChecking(false);
     }
@@ -121,7 +133,9 @@ const Index = () => {
   const handleClear = useCallback(() => {
     setDraft('');
     setResult(null);
+    setCorrectedDraft(null);
     setError(null);
+    setValidationError(null);
   }, []);
 
   const handlePreset = useCallback((presetId: string) => {
@@ -245,7 +259,7 @@ const Index = () => {
                   className="police-textarea w-full"
                   placeholder="इथे FIR / नामपत्रा मराठीत टाका किंवा पेस्ट करा..."
                   value={draft}
-                  onChange={e => setDraft(e.target.value)}
+                  onChange={e => { setDraft(e.target.value); setValidationError(null); }}
                   aria-label="मूळ मसुदा"
                 />
                 <span className="absolute bottom-2 right-3 text-xs text-muted-foreground">
@@ -287,13 +301,13 @@ const Index = () => {
                 id="check_button"
                 className="btn-police-primary flex items-center gap-2"
                 onClick={handleCheck}
-                disabled={isChecking || !draft.trim()}
+                disabled={isChecking}
                 aria-label="कृपया तपासा"
               >
                 {isChecking && (
                   <span className="inline-block w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
                 )}
-                {isChecking ? 'तपासणी चालू आहे…' : 'कृपया तपासा'}
+                {isChecking ? 'तपासणी सुरू आहे...' : 'कृपया तपासा'}
               </button>
 
               <button
@@ -316,6 +330,12 @@ const Index = () => {
               </button>
             </div>
 
+            {validationError && (
+              <div className="text-sm text-destructive px-4 py-2 rounded-md border border-destructive/30 bg-destructive/10">
+                {validationError}
+              </div>
+            )}
+
             {error && (
               <div className="police-badge-warning text-sm px-4 py-2 rounded-md">
                 {error}
@@ -325,6 +345,7 @@ const Index = () => {
             {/* Phase 2: Corrected FIR result display */}
             {correctedDraft && (
               <div
+                ref={resultSectionRef}
                 id="corrected_result_section"
                 className="w-full rounded border border-border bg-white p-5 font-mangal"
                 style={{ fontSize: '16px', color: '#000' }}
