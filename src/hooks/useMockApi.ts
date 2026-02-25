@@ -30,6 +30,10 @@ export interface CheckResult {
   change_summary?: string[];
   line_highlights?: LineHighlight[];
   last_checked_iso?: string;
+  /** Supabase record ID (future) */
+  id?: string;
+  /** Supabase created_at timestamp (future) */
+  created_at?: string;
 }
 
 export interface PresetOption {
@@ -158,6 +162,8 @@ export function useMockApi() {
           change_summary: data.change_summary,
           line_highlights: data.line_highlights,
           last_checked_iso: data.last_checked_iso || new Date().toISOString(),
+          id: data.id,
+          created_at: data.created_at,
         };
       } catch {
         // Fallback to mock
