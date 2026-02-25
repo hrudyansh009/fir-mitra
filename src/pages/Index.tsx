@@ -104,6 +104,8 @@ const Index = () => {
         change_summary: data.change_summary || [],
         line_highlights: data.line_highlights || [],
         last_checked_iso: data.last_checked_iso || new Date().toISOString(),
+        id: data.id,
+        created_at: data.created_at,
       });
       // Smooth scroll to result
       setTimeout(() => {
