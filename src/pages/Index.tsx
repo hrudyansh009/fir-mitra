@@ -4,6 +4,17 @@ import Header from '@/components/Header';
 import { FormatSelect, SectionSelect } from '@/components/Selectors';
 import { useMockApi } from '@/hooks/useMockApi';
 import type { CheckResult, SectionOption } from '@/hooks/useMockApi';
+import { toast } from 'sonner';
+
+const formatTime = (iso?: string): string => {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString('mr-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  } catch {
+    return '';
+  }
+};
 
 const Index = () => {
   const api = useMockApi();
@@ -20,7 +31,6 @@ const Index = () => {
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [result, setResult] = useState<CheckResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [lastChecked, setLastChecked] = useState<string | null>(null);
   const [instructionsOpen, setInstructionsOpen] = useState(true);
 
   // Close preset dropdown on outside click
@@ -58,11 +68,14 @@ const Index = () => {
     try {
       const res = await api.checkDraft(draft, formatId || 'fmt-01', selectedSections);
       setResult(res);
-      setLastChecked(new Date().toLocaleTimeString('mr-IN'));
       // Auto-suggest sections from result
-      if (res.suggested_sections.length > 0) {
+      if (res.suggested_sections && res.suggested_sections.length > 0) {
         const newSecs = res.suggested_sections.map(s => s.section_id);
         setSelectedSections(prev => [...new Set([...prev, ...newSecs])]);
+      }
+      // Auto-select suggested format
+      if (res.suggested_format_id) {
+        setFormatId(res.suggested_format_id);
       }
     } catch {
       setError('त्रुटी — नेटवर्क समस्या. कृपया नंतर प्रयत्न करा.');
@@ -89,7 +102,6 @@ const Index = () => {
     setDraft('');
     setResult(null);
     setError(null);
-    setLastChecked(null);
   }, []);
 
   const handlePreset = useCallback((presetId: string) => {
@@ -105,24 +117,55 @@ const Index = () => {
   const handleCopy = useCallback(() => {
     if (result?.corrected_draft) {
       navigator.clipboard.writeText(result.corrected_draft);
+      toast('कॉपी केले');
     }
   }, [result]);
 
   const handleDownload = useCallback(() => {
     if (!result?.corrected_draft) return;
-    const blob = new Blob([result.corrected_draft], { type: 'text/plain;charset=utf-8' });
+    const bom = '\uFEFF';
+    const blob = new Blob([bom + result.corrected_draft], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'सुधारित_मसुदा.txt';
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    a.download = `corrected_fir_${ts}.txt`;
     a.click();
     URL.revokeObjectURL(url);
+  }, [result]);
+
+  const handleAddSuggestedSection = useCallback((sectionId: string) => {
+    setSelectedSections(prev => [...new Set([...prev, sectionId])]);
+  }, []);
+
+  // Build line highlight map for original panel
+  const lineHighlightMap = useMemo(() => {
+    const map: Record<number, string> = {};
+    if (result?.line_highlights) {
+      result.line_highlights.forEach(lh => {
+        map[lh.line] = lh.issue;
+      });
+    }
+    return map;
+  }, [result]);
+
+  // Merge evidence + extracted_fields
+  const allEvidence = useMemo(() => {
+    if (!result) return {};
+    return { ...(result.evidence || {}), ...(result.extracted_fields || {}) };
   }, [result]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <EmergencyStrip />
       <Header />
+
+      {/* Demo mode banner */}
+      {api.isDemoMode && (
+        <div className="bg-accent/20 border-b border-accent text-center py-1.5 text-sm font-semibold text-accent-foreground">
+          ⚠ डेमो मोड — स्थानिक API कनेक्ट नाही
+        </div>
+      )}
 
       <main className="flex-1 mx-auto w-full max-w-[1200px] px-6 py-6">
         <div className="flex gap-6">
@@ -271,17 +314,30 @@ const Index = () => {
                   गहाळ: {result.missing_elements.length}
                 </span>
               )}
-              {lastChecked && (
+              {result?.last_checked_iso && (
                 <span id="last_checked" className="police-badge-success">
-                  शेवटची तपासणी: {lastChecked}
+                  तपासणी वेळ: {formatTime(result.last_checked_iso)}
                 </span>
               )}
               {isChecking && (
-                <span id="processing_indicator" className="police-badge text-muted-foreground bg-muted">
+                <span id="processing_indicator" className="police-badge text-muted-foreground bg-muted flex items-center gap-1.5">
+                  <span className="inline-block w-3 h-3 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
                   तपासणी चालू आहे…
                 </span>
               )}
             </div>
+
+            {/* Change summary */}
+            {result?.change_summary && result.change_summary.length > 0 && (
+              <div id="change_summary_box" className="text-xs space-y-0.5 px-3 py-2 rounded-md bg-muted/40 border border-border">
+                {result.change_summary.map((s, i) => (
+                  <div key={i} className="flex items-start gap-1.5">
+                    <span className="text-accent mt-0.5">•</span>
+                    <span>{s}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {!result && !isChecking && (
               <div className="flex-1 flex items-center justify-center police-card p-8 text-center text-muted-foreground text-sm">
@@ -296,6 +352,7 @@ const Index = () => {
               <>
                 {/* Comparison panels */}
                 <div className="flex gap-3">
+                  {/* Original */}
                   <div className="flex-1">
                     <div className="police-label text-xs">मूळ मसुदा</div>
                     <div
@@ -304,11 +361,30 @@ const Index = () => {
                       className="sync-scroll-panel bg-muted/30"
                       onScroll={() => handleScroll('original')}
                     >
-                      <pre className="whitespace-pre-wrap font-mangal text-sm">{draft}</pre>
+                      <pre className="whitespace-pre-wrap font-mangal text-sm">
+                        {draft.split('\n').map((line, i) => {
+                          const lineNum = i + 1;
+                          const highlight = lineHighlightMap[lineNum];
+                          return (
+                            <span
+                              key={i}
+                              className={`block relative ${highlight ? 'border-b-2 border-accent/60 bg-accent/10' : ''}`}
+                              title={highlight || undefined}
+                            >
+                              <span className="inline-block w-7 text-right mr-2 text-muted-foreground/50 text-xs select-none">{lineNum}</span>
+                              {highlight && (
+                                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-destructive" title={highlight} />
+                              )}
+                              {line}
+                            </span>
+                          );
+                        })}
+                      </pre>
                     </div>
                   </div>
+                  {/* Corrected */}
                   <div className="flex-1">
-                    <div className="police-label text-xs">सुधारित मसुदा</div>
+                    <div className="police-label text-xs border-l-2 border-accent pl-2">सुधारित मसुदा</div>
                     <div
                       id="corrected_output"
                       ref={correctedRef}
@@ -316,15 +392,22 @@ const Index = () => {
                       style={{ background: 'hsl(var(--surface-elevated))' }}
                       onScroll={() => handleScroll('corrected')}
                     >
-                      <pre className="whitespace-pre-wrap font-mangal text-sm">
-                        {result.corrected_draft.split('\n').map((line, i) =>
-                          line.startsWith('[') ? (
-                            <span key={i} className="highlight-missing block">{line}</span>
-                          ) : (
-                            <span key={i} className="block">{line}</span>
-                          )
-                        )}
-                      </pre>
+                      {result.corrected_html ? (
+                        <div
+                          className="whitespace-pre-wrap font-mangal text-sm corrected-html-view"
+                          dangerouslySetInnerHTML={{ __html: result.corrected_html }}
+                        />
+                      ) : (
+                        <pre className="whitespace-pre-wrap font-mangal text-sm">
+                          {result.corrected_draft.split('\n').map((line, i) =>
+                            line.startsWith('[') ? (
+                              <span key={i} className="highlight-missing block">{line}</span>
+                            ) : (
+                              <span key={i} className="block">{line}</span>
+                            )
+                          )}
+                        </pre>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -350,29 +433,54 @@ const Index = () => {
                 </div>
 
                 {/* Missing elements */}
-                {result.missing_elements.length > 0 && (
-                  <div className="police-card p-4">
-                    <h3 className="font-bold text-sm mb-2 text-destructive">गहाळ घटक</h3>
+                <div className="police-card p-4">
+                  <h3 className="font-bold text-sm mb-2 text-destructive">गहाळ घटक</h3>
+                  {result.missing_elements.length > 0 ? (
                     <ul id="missing_list" className="list-disc list-inside text-sm space-y-1">
                       {result.missing_elements.map((m, i) => (
                         <li key={i} className="text-foreground">{m}</li>
                       ))}
                     </ul>
-                  </div>
-                )}
+                  ) : (
+                    <span id="missing_list" className="inline-block text-xs px-3 py-1 rounded-full bg-green-100 text-green-800 font-semibold">
+                      सगळे घटक तपासले गेले
+                    </span>
+                  )}
+                </div>
 
-                {/* Evidence */}
-                {Object.keys(result.evidence).length > 0 && (
-                  <div className="police-card p-4">
-                    <h3 className="font-bold text-sm mb-2">ओळखलेले घटक</h3>
+                {/* Evidence + Extracted fields */}
+                <div className="police-card p-4">
+                  <h3 className="font-bold text-sm mb-2">ओळखलेले घटक</h3>
+                  {Object.keys(allEvidence).length > 0 ? (
                     <dl id="evidence_list" className="text-sm space-y-1">
-                      {Object.entries(result.evidence).map(([key, val]) => (
+                      {Object.entries(allEvidence).map(([key, val]) => (
                         <div key={key} className="flex gap-2">
                           <dt className="font-semibold text-muted-foreground min-w-[80px]">{key}:</dt>
-                          <dd className="text-foreground">{val}</dd>
+                          <dd className="text-foreground">{val || '—'}</dd>
                         </div>
                       ))}
                     </dl>
+                  ) : (
+                    <p id="evidence_list" className="text-sm text-muted-foreground">– माहिती उपलब्ध नाही –</p>
+                  )}
+                </div>
+
+                {/* Suggested sections chips */}
+                {result.suggested_sections && result.suggested_sections.length > 0 && (
+                  <div id="suggested_sections" className="police-card p-4">
+                    <h3 className="font-bold text-sm mb-2">सुचवलेले कलम</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {result.suggested_sections.map(s => (
+                        <button
+                          key={s.section_id}
+                          className="text-xs px-3 py-1 rounded-full border border-accent bg-accent/10 hover:bg-accent/25 transition-colors cursor-pointer"
+                          onClick={() => handleAddSuggestedSection(s.section_id)}
+                          aria-label={`${s.display} कलम जोडा`}
+                        >
+                          {s.display} ({s.statute})
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </>
@@ -383,7 +491,7 @@ const Index = () => {
 
       {/* Footer */}
       <footer className="py-3 text-center text-xs text-muted-foreground border-t border-border">
-        © नाशिक शहर पोलीस — डेमो मोड
+        © नाशिक शहर पोलीस {api.isDemoMode ? '— डेमो मोड' : ''}
       </footer>
     </div>
   );
