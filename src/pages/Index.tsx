@@ -60,29 +60,49 @@ const Index = () => {
     setSectionOptions(api.getSections(q));
   }, [api]);
 
+  // Store corrected draft from backend
+  const [correctedDraft, setCorrectedDraft] = useState<string | null>(null);
+
   const handleCheck = useCallback(async () => {
     if (!draft.trim()) return;
     setIsChecking(true);
     setError(null);
     setResult(null);
+    setCorrectedDraft(null);
     try {
-      const res = await api.checkDraft(draft, formatId || 'fmt-01', selectedSections);
-      setResult(res);
-      // Auto-suggest sections from result
-      if (res.suggested_sections && res.suggested_sections.length > 0) {
-        const newSecs = res.suggested_sections.map(s => s.section_id);
-        setSelectedSections(prev => [...new Set([...prev, ...newSecs])]);
-      }
-      // Auto-select suggested format
-      if (res.suggested_format_id) {
-        setFormatId(res.suggested_format_id);
-      }
+      const response = await fetch('http://127.0.0.1:5000/api/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          format: formatId || '',
+          section: selectedSections.join(','),
+          draft: draft,
+        }),
+      });
+      if (!response.ok) throw new Error('API error');
+      const data = await response.json();
+      // Store corrected_draft in variable
+      const corrected: string = data.corrected_draft || '';
+      setCorrectedDraft(corrected);
+      // Also populate result for existing UI rendering
+      setResult({
+        corrected_draft: corrected,
+        corrected_html: data.corrected_html || '',
+        missing_elements: data.missing_elements || [],
+        evidence: data.evidence || {},
+        extracted_fields: data.extracted_fields || {},
+        suggested_sections: data.suggested_sections || [],
+        suggested_format_id: data.suggested_format_id || '',
+        change_summary: data.change_summary || [],
+        line_highlights: data.line_highlights || [],
+        last_checked_iso: data.last_checked_iso || new Date().toISOString(),
+      });
     } catch {
       setError('त्रुटी — नेटवर्क समस्या. कृपया नंतर प्रयत्न करा.');
     } finally {
       setIsChecking(false);
     }
-  }, [draft, formatId, selectedSections, api]);
+  }, [draft, formatId, selectedSections]);
 
   const handleSuggest = useCallback(async () => {
     if (!draft.trim()) return;
