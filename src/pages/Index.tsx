@@ -321,6 +321,27 @@ const Index = () => {
                 {error}
               </div>
             )}
+
+            {/* Phase 2: Corrected FIR result display */}
+            {correctedDraft && (
+              <div
+                id="corrected_result_section"
+                className="w-full rounded border border-border bg-white p-5 font-mangal"
+                style={{ fontSize: '16px', color: '#000' }}
+              >
+                <h3 className="text-lg font-bold mb-4" style={{ color: '#000' }}>सुधारित मसुदा</h3>
+                <div className="border-t border-b border-border py-3 mb-3 space-y-1" style={{ color: '#000' }}>
+                  <div><span className="font-bold">FORMAT:</span> {formatId || '—'}</div>
+                  <div><span className="font-bold">SECTION:</span> {selectedSections.length > 0 ? selectedSections.join(', ') : '—'}</div>
+                </div>
+                <div>
+                  <div className="font-bold mb-2">CORRECTED DRAFT:</div>
+                  <pre className="whitespace-pre-wrap font-mangal" style={{ fontSize: '16px', color: '#000' }}>
+                    {correctedDraft}
+                  </pre>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* RIGHT COLUMN - RESULTS */}
