@@ -6,22 +6,8 @@ import { useMockApi } from '@/hooks/useMockApi';
 import type { CheckResult, SectionOption } from '@/hooks/useMockApi';
 import { toast } from 'sonner';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
-
-type TapasaBackendResponse = {
-  missing_words?: string[];
-  suggested_sections?: Array<{
-    id?: number;
-    score?: number;
-    type?: string;          // e.g. "scst"
-    section_no?: number | null;
-    section_key?: string;   // e.g. "scst_section_10"
-    title?: string;         // Marathi title
-    snippet?: string;       // Marathi snippet
-    lang?: string;
-  }>;
-  debug?: Record<string, unknown>;
-};
+import { krupayaTapasa } from '@/lib/api';
+import type { TapasaResponse } from '@/lib/api';
 
 const formatTime = (iso?: string): string => {
   if (!iso) return '';
@@ -82,21 +68,9 @@ const Index = () => {
   // Store corrected draft from backend
   const [correctedDraft, setCorrectedDraft] = useState<string | null>(null);
 
-  // Call FastAPI /krupaya_tapasa
-  const callTapasa = useCallback(async (text: string, signal?: AbortSignal): Promise<TapasaBackendResponse> => {
-    const res = await fetch(`${API_BASE}/krupaya_tapasa`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify({ text, k: 7, lang: 'mr' }),
-      signal,
-    });
-
-    if (!res.ok) {
-      const t = await res.text().catch(() => '');
-      throw new Error(t || `HTTP ${res.status}`);
-    }
-
-    return (await res.json()) as TapasaBackendResponse;
+  // Call backend using shared client
+  const callTapasa = useCallback(async (text: string): Promise<TapasaResponse> => {
+    return await krupayaTapasa({ text, k: 7, lang: 'mr' });
   }, []);
 
   const handleCheck = useCallback(async () => {
@@ -112,19 +86,14 @@ const Index = () => {
     setCorrectedDraft(null);
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const data = await callTapasa(draft);
 
-      const data = await callTapasa(draft, controller.signal);
-
-      clearTimeout(timeoutId);
-
-      const missingWords: string[] = Array.isArray(data?.missing_words) ? data.missing_words : [];
+      const missingWords: string[] = Array.isArray(data?.missing_words) ? (data.missing_words as string[]) : [];
       const rawSuggested = Array.isArray(data?.suggested_sections) ? data.suggested_sections : [];
 
       // Map backend suggestions -> UI chip format: { section_id, display, statute }
       const mappedSuggested = rawSuggested
-        .map((s) => {
+        .map((s: any) => {
           const section_id =
             (typeof s?.section_key === 'string' && s.section_key) ||
             (typeof s?.id === 'number' ? String(s.id) : '') ||
@@ -142,9 +111,9 @@ const Index = () => {
 
           return { section_id, display, statute };
         })
-        .filter((x): x is { section_id: string; display: string; statute: string } => Boolean(x));
+        .filter((x: any): x is { section_id: string; display: string; statute: string } => Boolean(x));
 
-      // /krupaya_tapasa does not return corrected draft; keep original as "corrected"
+      // You currently keep original as corrected (OK for demo)
       const corrected = draft;
 
       setCorrectedDraft(corrected);
@@ -184,8 +153,8 @@ const Index = () => {
       const rawSuggested = Array.isArray(data?.suggested_sections) ? data.suggested_sections : [];
 
       const newSecs = rawSuggested
-        .map((s) => (typeof s?.section_key === 'string' ? s.section_key : ''))
-        .filter((x): x is string => Boolean(x));
+        .map((s: any) => (typeof s?.section_key === 'string' ? s.section_key : ''))
+        .filter((x: any): x is string => Boolean(x));
 
       setSelectedSections((prev) => [...new Set([...prev, ...newSecs])]);
     } catch {
@@ -453,18 +422,6 @@ const Index = () => {
                 </span>
               )}
             </div>
-
-            {/* Change summary */}
-            {result?.change_summary && result.change_summary.length > 0 && (
-              <div id="change_summary_box" className="text-xs space-y-0.5 px-3 py-2 rounded-md bg-muted/40 border border-border">
-                {result.change_summary.map((s, i) => (
-                  <div key={i} className="flex items-start gap-1.5">
-                    <span className="text-accent mt-0.5">•</span>
-                    <span>{s}</span>
-                  </div>
-                ))}
-              </div>
-            )}
 
             {!result && !isChecking && (
               <div className="flex-1 flex items-center justify-center police-card p-8 text-center text-muted-foreground text-sm">
