@@ -6,6 +6,23 @@ import { useMockApi } from '@/hooks/useMockApi';
 import type { CheckResult, SectionOption } from '@/hooks/useMockApi';
 import { toast } from 'sonner';
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+
+type TapasaBackendResponse = {
+  missing_words?: string[];
+  suggested_sections?: Array<{
+    id?: number;
+    score?: number;
+    type?: string;          // e.g. "scst"
+    section_no?: number | null;
+    section_key?: string;   // e.g. "scst_section_10"
+    title?: string;         // Marathi title
+    snippet?: string;       // Marathi snippet
+    lang?: string;
+  }>;
+  debug?: Record<string, unknown>;
+};
+
 const formatTime = (iso?: string): string => {
   if (!iso) return '';
   try {
@@ -65,48 +82,88 @@ const Index = () => {
   // Store corrected draft from backend
   const [correctedDraft, setCorrectedDraft] = useState<string | null>(null);
 
+  // Call FastAPI /krupaya_tapasa
+  const callTapasa = useCallback(async (text: string, signal?: AbortSignal): Promise<TapasaBackendResponse> => {
+    const res = await fetch(`${API_BASE}/krupaya_tapasa`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ text, k: 7, lang: 'mr' }),
+      signal,
+    });
+
+    if (!res.ok) {
+      const t = await res.text().catch(() => '');
+      throw new Error(t || `HTTP ${res.status}`);
+    }
+
+    return (await res.json()) as TapasaBackendResponse;
+  }, []);
+
   const handleCheck = useCallback(async () => {
     setValidationError(null);
     if (!draft.trim()) {
       setValidationError('कृपया मसुदा लिहा.');
       return;
     }
+
     setIsChecking(true);
     setError(null);
     setResult(null);
     setCorrectedDraft(null);
+
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
-      const response = await fetch('http://127.0.0.1:5000/api/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          format: formatId || '',
-          section: selectedSections.join(','),
-          draft: draft,
-        }),
-        signal: controller.signal,
-      });
+
+      const data = await callTapasa(draft, controller.signal);
+
       clearTimeout(timeoutId);
-      if (!response.ok) throw new Error('API error');
-      const data = await response.json();
-      const corrected: string = data.corrected_draft || '';
+
+      const missingWords: string[] = Array.isArray(data?.missing_words) ? data.missing_words : [];
+      const rawSuggested = Array.isArray(data?.suggested_sections) ? data.suggested_sections : [];
+
+      // Map backend suggestions -> UI chip format: { section_id, display, statute }
+      const mappedSuggested = rawSuggested
+        .map((s) => {
+          const section_id =
+            (typeof s?.section_key === 'string' && s.section_key) ||
+            (typeof s?.id === 'number' ? String(s.id) : '') ||
+            '';
+
+          if (!section_id) return null;
+
+          const display =
+            (typeof s?.title === 'string' && s.title) ||
+            section_id;
+
+          const statute =
+            (typeof s?.type === 'string' && s.type) ||
+            'scst';
+
+          return { section_id, display, statute };
+        })
+        .filter((x): x is { section_id: string; display: string; statute: string } => Boolean(x));
+
+      // /krupaya_tapasa does not return corrected draft; keep original as "corrected"
+      const corrected = draft;
+
       setCorrectedDraft(corrected);
+
       setResult({
         corrected_draft: corrected,
-        corrected_html: data.corrected_html || '',
-        missing_elements: data.missing_elements || [],
-        evidence: data.evidence || {},
-        extracted_fields: data.extracted_fields || {},
-        suggested_sections: data.suggested_sections || [],
-        suggested_format_id: data.suggested_format_id || '',
-        change_summary: data.change_summary || [],
-        line_highlights: data.line_highlights || [],
-        last_checked_iso: data.last_checked_iso || new Date().toISOString(),
-        id: data.id,
-        created_at: data.created_at,
+        corrected_html: '',
+        missing_elements: missingWords,
+        evidence: {},
+        extracted_fields: {},
+        suggested_sections: mappedSuggested,
+        suggested_format_id: '',
+        change_summary: [],
+        line_highlights: [],
+        last_checked_iso: new Date().toISOString(),
+        id: undefined,
+        created_at: undefined,
       });
+
       // Smooth scroll to result
       setTimeout(() => {
         resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -116,21 +173,27 @@ const Index = () => {
     } finally {
       setIsChecking(false);
     }
-  }, [draft, formatId, selectedSections]);
+  }, [draft, callTapasa]);
 
   const handleSuggest = useCallback(async () => {
     if (!draft.trim()) return;
     setIsSuggesting(true);
+
     try {
-      const suggestions = await api.suggestSections(draft);
-      const newSecs = suggestions.map(s => s.section_id);
-      setSelectedSections(prev => [...new Set([...prev, ...newSecs])]);
+      const data = await callTapasa(draft);
+      const rawSuggested = Array.isArray(data?.suggested_sections) ? data.suggested_sections : [];
+
+      const newSecs = rawSuggested
+        .map((s) => (typeof s?.section_key === 'string' ? s.section_key : ''))
+        .filter((x): x is string => Boolean(x));
+
+      setSelectedSections((prev) => [...new Set([...prev, ...newSecs])]);
     } catch {
       // silent
     } finally {
       setIsSuggesting(false);
     }
-  }, [draft, api]);
+  }, [draft, callTapasa]);
 
   const handleClear = useCallback(() => {
     setDraft('');
@@ -141,7 +204,7 @@ const Index = () => {
   }, []);
 
   const handlePreset = useCallback((presetId: string) => {
-    const preset = presets.find(p => p.id === presetId);
+    const preset = presets.find((p) => p.id === presetId);
     if (preset) {
       setDraft(preset.draft);
       setFormatId(preset.format_id);
@@ -171,14 +234,14 @@ const Index = () => {
   }, [result]);
 
   const handleAddSuggestedSection = useCallback((sectionId: string) => {
-    setSelectedSections(prev => [...new Set([...prev, sectionId])]);
+    setSelectedSections((prev) => [...new Set([...prev, sectionId])]);
   }, []);
 
   // Build line highlight map for original panel
   const lineHighlightMap = useMemo(() => {
     const map: Record<number, string> = {};
     if (result?.line_highlights) {
-      result.line_highlights.forEach(lh => {
+      result.line_highlights.forEach((lh) => {
         map[lh.line] = lh.issue;
       });
     }
@@ -261,7 +324,7 @@ const Index = () => {
                   className="police-textarea w-full"
                   placeholder="इथे FIR / नामपत्रा मराठीत टाका किंवा पेस्ट करा..."
                   value={draft}
-                  onChange={e => { setDraft(e.target.value); setValidationError(null); }}
+                  onChange={(e) => { setDraft(e.target.value); setValidationError(null); }}
                   aria-label="मूळ मसुदा"
                 />
                 <span className="absolute bottom-2 right-3 text-xs text-muted-foreground">
@@ -286,7 +349,7 @@ const Index = () => {
                 </button>
                 {presetOpen && (
                   <div className="dropdown-panel-premium">
-                    {presets.map(p => (
+                    {presets.map((p) => (
                       <button
                         key={p.id}
                         className="dropdown-item-premium w-full text-left"
@@ -344,7 +407,7 @@ const Index = () => {
               </div>
             )}
 
-            {/* Phase 2: Corrected FIR result display */}
+            {/* Corrected FIR result display */}
             {correctedDraft && (
               <div
                 ref={resultSectionRef}
@@ -421,9 +484,9 @@ const Index = () => {
                     <div className="police-label text-xs">मूळ मसुदा</div>
                     <div
                       id="original_output"
-                      ref={originalRef}
                       className="sync-scroll-panel bg-muted/30"
                       onScroll={() => handleScroll('original')}
+                      ref={originalRef}
                     >
                       <pre className="whitespace-pre-wrap font-mangal text-sm">
                         {draft.split('\n').map((line, i) => {
@@ -446,15 +509,16 @@ const Index = () => {
                       </pre>
                     </div>
                   </div>
+
                   {/* Corrected */}
                   <div className="flex-1">
                     <div className="police-label text-xs border-l-2 border-accent pl-2">सुधारित मसुदा</div>
                     <div
                       id="corrected_output"
-                      ref={correctedRef}
                       className="sync-scroll-panel"
                       style={{ background: 'hsl(var(--surface-elevated))' }}
                       onScroll={() => handleScroll('corrected')}
+                      ref={correctedRef}
                     >
                       {result.corrected_html ? (
                         <div
@@ -478,20 +542,10 @@ const Index = () => {
 
                 {/* Action buttons */}
                 <div className="flex gap-2">
-                  <button
-                    id="copy_corrected"
-                    className="btn-police-secondary text-sm"
-                    onClick={handleCopy}
-                    aria-label="कॉपी करा"
-                  >
+                  <button id="copy_corrected" className="btn-police-secondary text-sm" onClick={handleCopy} aria-label="कॉपी करा">
                     📋 कॉपी करा
                   </button>
-                  <button
-                    id="download_corrected"
-                    className="btn-police-secondary text-sm"
-                    onClick={handleDownload}
-                    aria-label="डाउनलोड (.txt)"
-                  >
+                  <button id="download_corrected" className="btn-police-secondary text-sm" onClick={handleDownload} aria-label="डाउनलोड (.txt)">
                     ⬇ डाउनलोड (.txt)
                   </button>
                 </div>
@@ -520,7 +574,7 @@ const Index = () => {
                       {Object.entries(allEvidence).map(([key, val]) => (
                         <div key={key} className="flex gap-2">
                           <dt className="font-semibold text-muted-foreground min-w-[80px]">{key}:</dt>
-                          <dd className="text-foreground">{val || '—'}</dd>
+                          <dd className="text-foreground">{(val as string) || '—'}</dd>
                         </div>
                       ))}
                     </dl>
@@ -534,7 +588,7 @@ const Index = () => {
                   <div id="suggested_sections" className="police-card p-4">
                     <h3 className="font-bold text-sm mb-2">सुचवलेले कलम</h3>
                     <div className="flex flex-wrap gap-2">
-                      {result.suggested_sections.map(s => (
+                      {result.suggested_sections.map((s) => (
                         <button
                           key={s.section_id}
                           className="text-xs px-3 py-1 rounded-full border border-accent bg-accent/10 hover:bg-accent/25 transition-colors cursor-pointer"
