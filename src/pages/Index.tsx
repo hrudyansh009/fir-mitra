@@ -9,6 +9,7 @@ type TapasaUI = {
     title?: string | null;
     score?: number;
     type?: string;
+    lang?: string;
   }>;
 };
 
@@ -63,13 +64,14 @@ export default function Index() {
       const missing = Array.isArray(data?.missing_words) ? data.missing_words : [];
       const suggestedRaw = Array.isArray(data?.suggested_sections) ? data.suggested_sections : [];
 
-      // IMPORTANT: DO NOT render snippet anywhere (mojibake blocker)
+      // IMPORTANT: DO NOT render snippet/text anywhere (mojibake blocker)
       const suggested = suggestedRaw.map((s: any) => ({
         section_key: s?.section_key,
         section_no: s?.section_no,
         title: s?.title ?? null,
         score: typeof s?.score === "number" ? s.score : undefined,
         type: typeof s?.type === "string" ? s.type : "scst",
+        lang: typeof s?.lang === "string" ? s.lang : undefined,
       }));
 
       setTapasaData({ missing_words: missing, suggested_sections: suggested });
@@ -84,7 +86,7 @@ export default function Index() {
       }
 
       scrollToResults();
-    } catch {
+    } catch (e: any) {
       setError("त्रुटी — सर्व्हरशी संपर्क झाला नाही. कृपया पुन्हा प्रयत्न करा.");
     } finally {
       setIsChecking(false);
@@ -123,7 +125,7 @@ export default function Index() {
       setGenDraft(res?.draft || "");
       setGenMissing(Array.isArray(res?.missing_fields) ? res.missing_fields : []);
       scrollToResults();
-    } catch {
+    } catch (e: any) {
       setError("Auto FIR तयार करताना त्रुटी आली.");
     } finally {
       setIsSuggesting(false);
@@ -282,10 +284,12 @@ export default function Index() {
 
                     <div className="mt-2 flex flex-wrap gap-2">
                       {(tapasaData?.suggested_sections || []).map((s, idx) => {
+                        // Marathi-first label. If title missing, show section_key or "कलम X"
                         const label =
                           (s.title && s.title.trim()) ||
                           s.section_key ||
-                          (s.section_no ? `Section ${s.section_no}` : `S${idx + 1}`);
+                          (s.section_no ? `कलम ${s.section_no}` : `कलम ${idx + 1}`);
+
                         const key = s.section_key || `${idx}`;
                         const score = typeof s.score === "number" ? s.score.toFixed(2) : "";
 
