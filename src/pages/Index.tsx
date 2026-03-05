@@ -1,256 +1,405 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
-import { krupayaTapasa, generateFir } from "@/lib/api";
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import EmergencyStrip from '@/components/EmergencyStrip';
+import Header from '@/components/Header';
+import { FormatSelect, SectionSelect } from '@/components/Selectors';
+import { useMockApi } from '@/hooks/useMockApi';
+import type { CheckResult, SectionOption } from '@/hooks/useMockApi';
+import { toast } from 'sonner';
+import { krupayaTapasa } from '@/lib/api';
 
-type TapasaUI = {
-  missing_words: string[];
-  suggested_sections: Array<{
-    section_key?: string;
-    section_no?: number;
-    title?: string | null;
-    score?: number;
-    type?: string;
-    lang?: string;
-  }>;
+const formatTime = (iso?: string): string => {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString('mr-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  } catch {
+    return '';
+  }
 };
 
-export default function Index() {
-  const resultSectionRef = useRef<HTMLDivElement | null>(null);
+const Index = () => {
+  const api = useMockApi();
+  const formats = useMemo(() => api.getFormats(), [api]);
+  const presets = useMemo(() => api.getPresets(), [api]);
+  const [presetOpen, setPresetOpen] = useState(false);
+  const presetRef = useRef<HTMLDivElement>(null);
 
-  // INPUTS
-  const [draft, setDraft] = useState<string>("");
-  const [formatId, setFormatId] = useState<string>("FIR");
-
-  // SELECTED SECTIONS
+  const [formatId, setFormatId] = useState<string | null>(null);
   const [selectedSections, setSelectedSections] = useState<string[]>([]);
-
-  // UI STATES
-  const [validationError, setValidationError] = useState<string | null>(null);
+  const [sectionOptions, setSectionOptions] = useState<SectionOption[]>(api.allSections);
+  const [draft, setDraft] = useState('');
+  const [isChecking, setIsChecking] = useState(false);
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [result, setResult] = useState<CheckResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isChecking, setIsChecking] = useState<boolean>(false);
-  const [isSuggesting, setIsSuggesting] = useState<boolean>(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [instructionsOpen, setInstructionsOpen] = useState(true);
 
-  // RESULTS
-  const [tapasaData, setTapasaData] = useState<TapasaUI | null>(null);
-  const [genDraft, setGenDraft] = useState<string>("");
-  const [genMissing, setGenMissing] = useState<string[]>([]);
-
-  const canRun = useMemo(() => draft.trim().length > 0, [draft]);
-
-  const scrollToResults = useCallback(() => {
-    setTimeout(() => {
-      resultSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 100);
+  // Close preset dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (presetRef.current && !presetRef.current.contains(e.target as Node)) {
+        setPresetOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // ACTION 1: KRUPAYA TAPASA (CHECK)
+  const originalRef = useRef<HTMLDivElement>(null);
+  const correctedRef = useRef<HTMLDivElement>(null);
+  const resultSectionRef = useRef<HTMLDivElement>(null);
+
+  // Sync scroll
+  const handleScroll = useCallback((source: 'original' | 'corrected') => {
+    const srcEl = source === 'original' ? originalRef.current : correctedRef.current;
+    const tgtEl = source === 'original' ? correctedRef.current : originalRef.current;
+    if (srcEl && tgtEl) {
+      tgtEl.scrollTop = srcEl.scrollTop;
+    }
+  }, []);
+
+  const handleSectionSearch = useCallback((q: string) => {
+    setSectionOptions(api.getSections(q));
+  }, [api]);
+
+  // Store "corrected" draft (in new backend we don’t truly correct, we analyze)
+  const [correctedDraft, setCorrectedDraft] = useState<string | null>(null);
+
   const handleCheck = useCallback(async () => {
     setValidationError(null);
     if (!draft.trim()) {
-      setValidationError("कृपया मसुदा लिहा.");
+      setValidationError('कृपया मसुदा लिहा.');
       return;
     }
 
     setIsChecking(true);
     setError(null);
-
-    // Reset outputs
-    setTapasaData(null);
-    setGenDraft("");
-    setGenMissing([]);
+    setResult(null);
+    setCorrectedDraft(null);
 
     try {
-      const data = await krupayaTapasa({ text: draft, k: 7, lang: "mr" });
+      // NEW: FastAPI Marathi check
+      const data: any = await krupayaTapasa({ text: draft, k: 7, lang: 'mr' });
 
-      const missing = Array.isArray(data?.missing_words) ? data.missing_words : [];
-      const suggestedRaw = Array.isArray(data?.suggested_sections) ? data.suggested_sections : [];
+      const missing_words: string[] = Array.isArray(data?.missing_words) ? data.missing_words : [];
+      const suggested_sections: any[] = Array.isArray(data?.suggested_sections) ? data.suggested_sections : [];
 
-      // IMPORTANT: DO NOT render snippet/text anywhere (mojibake blocker)
-      const suggested = suggestedRaw.map((s: any) => ({
-        section_key: s?.section_key,
-        section_no: s?.section_no,
-        title: s?.title ?? null,
-        score: typeof s?.score === "number" ? s.score : undefined,
-        type: typeof s?.type === "string" ? s.type : "scst",
-        lang: typeof s?.lang === "string" ? s.lang : undefined,
-      }));
+      // Keep UI flow: show “corrected draft” panel as the same text (analysis mode)
+      setCorrectedDraft(draft);
 
-      setTapasaData({ missing_words: missing, suggested_sections: suggested });
+      setResult({
+        corrected_draft: draft,
+        corrected_html: '',
+        missing_elements: missing_words,
+        evidence: {},
+        extracted_fields: {},
+        suggested_sections: suggested_sections,
+        suggested_format_id: formatId || '',
+        change_summary: missing_words.length
+          ? [`गहाळ शब्द/घटक: ${missing_words.length}`]
+          : ['गहाळ शब्द/घटक नाही'],
+        line_highlights: [],
+        last_checked_iso: new Date().toISOString(),
+      } as any);
 
-      // Auto-add keys to selected list
-      const keys = suggested
-        .map((s) => (typeof s.section_key === "string" ? s.section_key : ""))
-        .filter(Boolean);
-
-      if (keys.length) {
-        setSelectedSections((prev) => [...new Set([...prev, ...keys])]);
-      }
-
-      scrollToResults();
-    } catch (e: any) {
-      setError("त्रुटी — सर्व्हरशी संपर्क झाला नाही. कृपया पुन्हा प्रयत्न करा.");
+      setTimeout(() => {
+        resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    } catch {
+      setError('त्रुटी — सर्व्हरशी संपर्क झाला नाही. कृपया पुन्हा प्रयत्न करा.');
     } finally {
       setIsChecking(false);
     }
-  }, [draft, scrollToResults]);
+  }, [draft, formatId]);
 
-  // ACTION 2: AUTO FIR GENERATOR
-  const handleGenerateFir = useCallback(async () => {
-    setValidationError(null);
-    if (!draft.trim()) {
-      setValidationError("कृपया मसुदा लिहा.");
-      return;
-    }
-
+  const handleSuggest = useCallback(async () => {
+    if (!draft.trim()) return;
     setIsSuggesting(true);
-    setError(null);
-    setGenDraft("");
-    setGenMissing([]);
-
     try {
-      const res = await generateFir({
-        incident: draft,
-        lang: "mr",
-        format_id: formatId ?? "FIR",
-        sections: selectedSections,
-        fields: {
-          date: "",
-          time: "",
-          place: "",
-          victim_name: "",
-          accused_name: "",
-          witness_name: "",
-        },
-      });
-
-      setGenDraft(res?.draft || "");
-      setGenMissing(Array.isArray(res?.missing_fields) ? res.missing_fields : []);
-      scrollToResults();
-    } catch (e: any) {
-      setError("Auto FIR तयार करताना त्रुटी आली.");
+      const suggestions = await api.suggestSections(draft);
+      const newSecs = suggestions.map(s => s.section_id);
+      setSelectedSections(prev => [...new Set([...prev, ...newSecs])]);
+    } catch {
+      // silent
     } finally {
       setIsSuggesting(false);
     }
-  }, [draft, formatId, selectedSections, scrollToResults]);
+  }, [draft, api]);
 
-  const clearAll = useCallback(() => {
-    setDraft("");
-    setTapasaData(null);
-    setGenDraft("");
-    setGenMissing([]);
-    setSelectedSections([]);
-    setValidationError(null);
+  const handleClear = useCallback(() => {
+    setDraft('');
+    setResult(null);
+    setCorrectedDraft(null);
     setError(null);
+    setValidationError(null);
   }, []);
 
-  const removeSelected = useCallback((key: string) => {
-    setSelectedSections((prev) => prev.filter((x) => x !== key));
+  const handlePreset = useCallback((presetId: string) => {
+    const preset = presets.find(p => p.id === presetId);
+    if (preset) {
+      setDraft(preset.draft);
+      setFormatId(preset.format_id);
+      setSelectedSections(preset.sections);
+      setResult(null);
+    }
+  }, [presets]);
+
+  const handleCopy = useCallback(() => {
+    if (result?.corrected_draft) {
+      navigator.clipboard.writeText(result.corrected_draft);
+      toast('कॉपी केले');
+    }
+  }, [result]);
+
+  const handleDownload = useCallback(() => {
+    if (!result?.corrected_draft) return;
+    const bom = '\uFEFF';
+    const blob = new Blob([bom + result.corrected_draft], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    a.download = `fir_${ts}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [result]);
+
+  const handleAddSuggestedSection = useCallback((sectionId: string) => {
+    setSelectedSections(prev => [...new Set([...prev, sectionId])]);
   }, []);
+
+  // Build line highlight map for original panel (kept for layout compatibility)
+  const lineHighlightMap = useMemo(() => {
+    const map: Record<number, string> = {};
+    if ((result as any)?.line_highlights) {
+      (result as any).line_highlights.forEach((lh: any) => {
+        map[lh.line] = lh.issue;
+      });
+    }
+    return map;
+  }, [result]);
+
+  // Merge evidence + extracted_fields
+  const allEvidence = useMemo(() => {
+    if (!result) return {};
+    return { ...((result as any).evidence || {}), ...((result as any).extracted_fields || {}) };
+  }, [result]);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        {/* HEADER */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="text-xl font-extrabold">FIR Mitra</div>
-          <button className="btn-police-accent text-sm" onClick={clearAll} type="button">
-            Reset
-          </button>
+    <div className="min-h-screen flex flex-col bg-background">
+      <EmergencyStrip />
+      <Header />
+
+      {/* Demo mode banner */}
+      {api.isDemoMode && (
+        <div className="bg-accent/20 border-b border-accent text-center py-1.5 text-sm font-semibold text-accent-foreground">
+          ⚠ डेमो मोड — स्थानिक API कनेक्ट नाही
         </div>
+      )}
 
-        {/* ERRORS */}
-        {validationError && (
-          <div className="mb-3 police-card p-3 border border-destructive/40">
-            <div className="text-sm text-destructive font-semibold">{validationError}</div>
-          </div>
-        )}
-
-        {error && (
-          <div className="mb-3 police-card p-3 border border-destructive/40">
-            <div className="text-sm text-destructive font-semibold">{error}</div>
-          </div>
-        )}
-
+      <main className="flex-1 mx-auto w-full max-w-[1200px] px-6 py-6">
         <div className="flex gap-6">
-          {/* LEFT COLUMN */}
+          {/* LEFT COLUMN - INPUT */}
           <div className="w-[60%] flex flex-col gap-4">
-            <div className="police-card p-4">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <h2 className="text-lg font-bold">मसुदा</h2>
-
-                <div className="flex items-center gap-2">
-                  <label className="text-xs text-muted-foreground">Format</label>
-                  <select
-                    className="text-sm border border-border rounded px-2 py-1 bg-background"
-                    value={formatId}
-                    onChange={(e) => setFormatId(e.target.value)}
-                  >
-                    <option value="FIR">FIR</option>
-                    <option value="NC">NC</option>
-                  </select>
-                </div>
-              </div>
-
-              <textarea
-                className="w-full min-h-[340px] border border-border rounded p-3 text-sm bg-background"
-                placeholder="इथे FIR मसुदा लिहा..."
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+            {/* Selectors row */}
+            <div className="flex gap-4">
+              <FormatSelect
+                id="format_select"
+                containerId="format_select_container"
+                searchId="format_search"
+                label="फॉरमॅट निवडा"
+                options={formats}
+                value={formatId}
+                onChange={setFormatId}
               />
+              <SectionSelect
+                id="section_select"
+                containerId="section_select_container"
+                searchId="section_search"
+                label="संबंधित कलम निवडा"
+                options={sectionOptions}
+                selected={selectedSections}
+                onChange={setSelectedSections}
+                onSearch={handleSectionSearch}
+              />
+            </div>
 
-              <div className="mt-3 flex gap-2">
-                <button
-                  className="btn-police-accent text-sm"
-                  onClick={handleCheck}
-                  disabled={isChecking || isSuggesting || !canRun}
-                  type="button"
-                >
-                  {isChecking ? "तपासणी..." : "कृपया तपासा"}
-                </button>
+            {/* Instructions */}
+            <div className="police-card">
+              <button
+                className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-bold text-foreground"
+                onClick={() => setInstructionsOpen(!instructionsOpen)}
+                aria-expanded={instructionsOpen}
+                aria-label="सूचना"
+              >
+                <span>📋 सूचना</span>
+                <span className="text-muted-foreground">{instructionsOpen ? '▲' : '▼'}</span>
+              </button>
+              {instructionsOpen && (
+                <ul className="px-4 pb-3 text-sm text-muted-foreground list-disc list-inside space-y-1">
+                  <li>इथे FIR / नामपत्रा मराठीत टाका.</li>
+                  <li>कृपया तपासा क्लिक करा — काही सेकंद लागतील.</li>
+                  <li>उजव्या बाजूला निकाल दिसेल — कॉपी किंवा डाउनलोड करा.</li>
+                </ul>
+              )}
+            </div>
 
-                <button
-                  className="btn-police-accent text-sm"
-                  onClick={handleGenerateFir}
-                  disabled={isSuggesting || isChecking || !canRun}
-                  type="button"
-                >
-                  {isSuggesting ? "तयार करत आहे..." : "Auto FIR तयार करा"}
-                </button>
-              </div>
-
-              {/* Selected Sections */}
-              <div className="mt-4">
-                <div className="text-xs text-muted-foreground mb-2">Selected Sections</div>
-                <div className="flex flex-wrap gap-2">
-                  {selectedSections.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">— none —</div>
-                  ) : (
-                    selectedSections.map((k) => (
-                      <span
-                        key={k}
-                        className="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full border border-border bg-muted"
-                      >
-                        {k}
-                        <button
-                          className="text-xs opacity-70 hover:opacity-100"
-                          onClick={() => removeSelected(k)}
-                          type="button"
-                          aria-label={`remove ${k}`}
-                        >
-                          ✕
-                        </button>
-                      </span>
-                    ))
-                  )}
-                </div>
+            {/* Textarea */}
+            <div>
+              <label className="police-label" htmlFor="fir_input">
+                मूळ मसुदा (इथे FIR / नामपत्रा मराठीत टाका)
+              </label>
+              <div className="relative">
+                <textarea
+                  id="fir_input"
+                  className="police-textarea w-full"
+                  placeholder="इथे FIR / नामपत्रा मराठीत टाका किंवा पेस्ट करा..."
+                  value={draft}
+                  onChange={e => { setDraft(e.target.value); setValidationError(null); }}
+                  aria-label="मूळ मसुदा"
+                />
+                <span className="absolute bottom-2 right-3 text-xs text-muted-foreground">
+                  {draft.length} अक्षरे
+                </span>
               </div>
             </div>
+
+            {/* Control row */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative" ref={presetRef}>
+                <button
+                  id="preset_select"
+                  className="police-input pr-8 text-sm text-left min-w-[180px] flex items-center justify-between gap-2"
+                  onClick={() => setPresetOpen(!presetOpen)}
+                  aria-label="उदाहरण निवडा"
+                  aria-haspopup="listbox"
+                  aria-expanded={presetOpen}
+                >
+                  <span className="text-muted-foreground">उदाहरण निवडा</span>
+                  <span className="text-xs text-muted-foreground">{presetOpen ? '▲' : '▼'}</span>
+                </button>
+                {presetOpen && (
+                  <div className="dropdown-panel-premium">
+                    {presets.map(p => (
+                      <button
+                        key={p.id}
+                        className="dropdown-item-premium w-full text-left"
+                        onClick={() => { handlePreset(p.id); setPresetOpen(false); }}
+                      >
+                        {p.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                id="check_button"
+                className="btn-police-primary flex items-center gap-2"
+                onClick={handleCheck}
+                disabled={isChecking}
+                aria-label="कृपया तपासा"
+              >
+                {isChecking && (
+                  <span className="inline-block w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                )}
+                {isChecking ? 'तपासणी सुरू आहे...' : 'कृपया तपासा'}
+              </button>
+
+              <button
+                id="clear_button"
+                className="btn-police-secondary"
+                onClick={handleClear}
+                aria-label="साफ करा"
+              >
+                साफ करा
+              </button>
+
+              <button
+                id="suggest_sections"
+                className="btn-police-accent text-sm"
+                onClick={handleSuggest}
+                disabled={isSuggesting || isChecking || !draft.trim()}
+                aria-label="कलमे सुचवा"
+              >
+                {isSuggesting ? '...' : 'कलमे सुचवा'}
+              </button>
+            </div>
+
+            {validationError && (
+              <div className="text-sm text-destructive px-4 py-2 rounded-md border border-destructive/30 bg-destructive/10">
+                {validationError}
+              </div>
+            )}
+
+            {error && (
+              <div className="police-badge-warning text-sm px-4 py-2 rounded-md">
+                {error}
+              </div>
+            )}
+
+            {/* Result display (kept for meeting demo) */}
+            {correctedDraft && (
+              <div
+                ref={resultSectionRef}
+                id="corrected_result_section"
+                className="w-full rounded border border-border bg-white p-5 font-mangal"
+                style={{ fontSize: '16px', color: '#000' }}
+              >
+                <h3 className="text-lg font-bold mb-4" style={{ color: '#000' }}>निकाल</h3>
+                <div className="border-t border-b border-border py-3 mb-3 space-y-1" style={{ color: '#000' }}>
+                  <div><span className="font-bold">LANG:</span> MR</div>
+                  <div><span className="font-bold">FORMAT:</span> {formatId || '—'}</div>
+                  <div><span className="font-bold">SECTION:</span> {selectedSections.length > 0 ? selectedSections.join(', ') : '—'}</div>
+                </div>
+                <div>
+                  <div className="font-bold mb-2">INPUT DRAFT:</div>
+                  <pre className="whitespace-pre-wrap font-mangal" style={{ fontSize: '16px', color: '#000' }}>
+                    {correctedDraft}
+                  </pre>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* RIGHT COLUMN */}
+          {/* RIGHT COLUMN - RESULTS */}
           <div className="w-[40%] flex flex-col gap-4">
-            <h2 className="text-lg font-bold text-foreground">निकाल</h2>
+            <h2 className="text-lg font-bold text-foreground">निकाल (तुलनात्मक दृश्य)</h2>
 
-            {!tapasaData && !genDraft && !isChecking && (
+            {/* Status badges */}
+            <div className="flex flex-wrap gap-2 text-xs">
+              {result && (
+                <span id="missing_count_badge" className="police-badge-warning">
+                  गहाळ: {(result as any).missing_elements?.length || 0}
+                </span>
+              )}
+              {(result as any)?.last_checked_iso && (
+                <span id="last_checked" className="police-badge-success">
+                  तपासणी वेळ: {formatTime((result as any).last_checked_iso)}
+                </span>
+              )}
+              {isChecking && (
+                <span id="processing_indicator" className="police-badge text-muted-foreground bg-muted flex items-center gap-1.5">
+                  <span className="inline-block w-3 h-3 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
+                  तपासणी चालू आहे…
+                </span>
+              )}
+            </div>
+
+            {/* Change summary */}
+            {(result as any)?.change_summary && (result as any).change_summary.length > 0 && (
+              <div id="change_summary_box" className="text-xs space-y-0.5 px-3 py-2 rounded-md bg-muted/40 border border-border">
+                {(result as any).change_summary.map((s: string, i: number) => (
+                  <div key={i} className="flex items-start gap-1.5">
+                    <span className="text-accent mt-0.5">•</span>
+                    <span>{s}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!result && !isChecking && (
               <div className="flex-1 flex items-center justify-center police-card p-8 text-center text-muted-foreground text-sm">
                 <div>
                   <div className="text-4xl mb-3 opacity-40">📄</div>
@@ -259,103 +408,144 @@ export default function Index() {
               </div>
             )}
 
-            {(tapasaData || genDraft) && (
-              <div ref={resultSectionRef} className="police-card p-4">
-                <div className="grid gap-3">
-                  {/* ACCORDION 1: Missing */}
-                  <details open className="rounded-md border border-border p-3">
-                    <summary className="cursor-pointer font-bold">गहाळ घटक</summary>
-                    <div className="mt-2">
-                      {tapasaData?.missing_words?.length ? (
-                        <ul className="list-disc list-inside text-sm space-y-1">
-                          {tapasaData.missing_words.map((m, i) => (
-                            <li key={i}>{m}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <div className="text-sm text-muted-foreground">— नाही —</div>
-                      )}
+            {result && (
+              <>
+                {/* Comparison panels */}
+                <div className="flex gap-3">
+                  {/* Original */}
+                  <div className="flex-1">
+                    <div className="police-label text-xs">मूळ मसुदा</div>
+                    <div
+                      id="original_output"
+                      ref={originalRef}
+                      className="sync-scroll-panel bg-muted/30"
+                      onScroll={() => handleScroll('original')}
+                    >
+                      <pre className="whitespace-pre-wrap font-mangal text-sm">
+                        {draft.split('\n').map((line, i) => {
+                          const lineNum = i + 1;
+                          const highlight = (lineHighlightMap as any)[lineNum];
+                          return (
+                            <span
+                              key={i}
+                              className={`block relative ${highlight ? 'border-b-2 border-accent/60 bg-accent/10' : ''}`}
+                              title={highlight || undefined}
+                            >
+                              <span className="inline-block w-7 text-right mr-2 text-muted-foreground/50 text-xs select-none">{lineNum}</span>
+                              {highlight && (
+                                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-destructive" title={highlight} />
+                              )}
+                              {line}
+                            </span>
+                          );
+                        })}
+                      </pre>
                     </div>
-                  </details>
+                  </div>
 
-                  {/* ACCORDION 2: Suggested Sections */}
-                  <details open className="rounded-md border border-border p-3">
-                    <summary className="cursor-pointer font-bold">सुचवलेले कलम</summary>
+                  {/* Corrected (analysis view uses same draft) */}
+                  <div className="flex-1">
+                    <div className="police-label text-xs border-l-2 border-accent pl-2">सुधारित मसुदा</div>
+                    <div
+                      id="corrected_output"
+                      ref={correctedRef}
+                      className="sync-scroll-panel"
+                      style={{ background: 'hsl(var(--surface-elevated))' }}
+                      onScroll={() => handleScroll('corrected')}
+                    >
+                      <pre className="whitespace-pre-wrap font-mangal text-sm">
+                        {draft}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
 
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {(tapasaData?.suggested_sections || []).map((s, idx) => {
-                        // Marathi-first label. If title missing, show section_key or "कलम X"
-                        const label =
-                          (s.title && s.title.trim()) ||
-                          s.section_key ||
-                          (s.section_no ? `कलम ${s.section_no}` : `कलम ${idx + 1}`);
+                {/* Action buttons */}
+                <div className="flex gap-2">
+                  <button
+                    id="copy_corrected"
+                    className="btn-police-secondary text-sm"
+                    onClick={handleCopy}
+                    aria-label="कॉपी करा"
+                  >
+                    📋 कॉपी करा
+                  </button>
+                  <button
+                    id="download_corrected"
+                    className="btn-police-secondary text-sm"
+                    onClick={handleDownload}
+                    aria-label="डाउनलोड (.txt)"
+                  >
+                    ⬇ डाउनलोड (.txt)
+                  </button>
+                </div>
 
-                        const key = s.section_key || `${idx}`;
-                        const score = typeof s.score === "number" ? s.score.toFixed(2) : "";
+                {/* Missing words */}
+                <div className="police-card p-4">
+                  <h3 className="font-bold text-sm mb-2 text-destructive">गहाळ शब्द/घटक</h3>
+                  {(result as any).missing_elements?.length > 0 ? (
+                    <ul id="missing_list" className="list-disc list-inside text-sm space-y-1">
+                      {(result as any).missing_elements.map((m: string, i: number) => (
+                        <li key={i} className="text-foreground">{m}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span id="missing_list" className="inline-block text-xs px-3 py-1 rounded-full bg-green-100 text-green-800 font-semibold">
+                      गहाळ शब्द/घटक नाही
+                    </span>
+                  )}
+                </div>
 
+                {/* Evidence placeholder (kept for layout) */}
+                <div className="police-card p-4">
+                  <h3 className="font-bold text-sm mb-2">ओळखलेले घटक</h3>
+                  {Object.keys(allEvidence).length > 0 ? (
+                    <dl id="evidence_list" className="text-sm space-y-1">
+                      {Object.entries(allEvidence).map(([key, val]) => (
+                        <div key={key} className="flex gap-2">
+                          <dt className="font-semibold text-muted-foreground min-w-[80px]">{key}:</dt>
+                          <dd className="text-foreground">{(val as any) || '—'}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : (
+                    <p id="evidence_list" className="text-sm text-muted-foreground">– माहिती उपलब्ध नाही –</p>
+                  )}
+                </div>
+
+                {/* Suggested sections chips */}
+                {(result as any).suggested_sections && (result as any).suggested_sections.length > 0 && (
+                  <div id="suggested_sections" className="police-card p-4">
+                    <h3 className="font-bold text-sm mb-2">सुचवलेले कलम</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {(result as any).suggested_sections.map((s: any, idx: number) => {
+                        const id = String(s.section_key || s.section_no || s.id || idx);
+                        const title = (s.title && String(s.title).trim()) || s.section_key || (s.section_no ? `कलम ${s.section_no}` : id);
                         return (
                           <button
-                            key={key}
-                            className="text-xs px-3 py-1 rounded-full border border-accent bg-accent/10 hover:bg-accent/25"
-                            onClick={() =>
-                              s.section_key &&
-                              setSelectedSections((prev) => [...new Set([...prev, s.section_key!])])
-                            }
-                            type="button"
+                            key={id}
+                            className="text-xs px-3 py-1 rounded-full border border-accent bg-accent/10 hover:bg-accent/25 transition-colors cursor-pointer"
+                            onClick={() => handleAddSuggestedSection(id)}
+                            aria-label={`${title} कलम जोडा`}
                           >
-                            {label}
-                            {score ? ` • ${score}` : ""}
+                            {title}
                           </button>
                         );
                       })}
                     </div>
-
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      (Snippet बंद ठेवला आहे — police demo clean.)
-                    </div>
-                  </details>
-
-                  {/* ACCORDION 3: Auto FIR Generator */}
-                  <details open className="rounded-md border border-border p-3">
-                    <summary className="cursor-pointer font-bold">Auto FIR Draft</summary>
-
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        className="btn-police-accent text-sm"
-                        onClick={handleGenerateFir}
-                        disabled={isSuggesting || isChecking || !canRun}
-                        type="button"
-                      >
-                        {isSuggesting ? "तयार करत आहे..." : "Auto FIR तयार करा"}
-                      </button>
-                    </div>
-
-                    {genMissing.length > 0 && (
-                      <div className="mt-3">
-                        <div className="font-semibold text-sm text-destructive">Missing Fields</div>
-                        <div className="text-sm">{genMissing.join(", ")}</div>
-                      </div>
-                    )}
-
-                    {genDraft && (
-                      <div className="mt-3">
-                        <div className="text-xs text-muted-foreground mb-2">Draft (demo)</div>
-                        <pre className="whitespace-pre-wrap text-sm border border-border rounded p-3 bg-white text-black">
-                          {genDraft}
-                        </pre>
-                      </div>
-                    )}
-                  </details>
-                </div>
-              </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
+      </main>
 
-        <div className="mt-6 text-xs text-muted-foreground">
-          Demo rule: UI मध्ये Marathi snippet दाखवत नाही. फक्त missing_words + section_key + score.
-        </div>
-      </div>
+      <footer className="py-3 text-center text-xs text-muted-foreground border-t border-border">
+        © नाशिक शहर पोलीस {api.isDemoMode ? '— डेमो मोड' : ''}
+      </footer>
     </div>
   );
-}
+};
+
+export default Index;
