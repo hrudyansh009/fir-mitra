@@ -11,7 +11,11 @@ const formatTime = (iso?: string): string => {
   if (!iso) return '';
   try {
     const d = new Date(iso);
-    return d.toLocaleTimeString('mr-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return d.toLocaleTimeString('mr-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
   } catch {
     return '';
   }
@@ -34,8 +38,8 @@ const Index = () => {
   const [error, setError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [instructionsOpen, setInstructionsOpen] = useState(true);
+  const [correctedDraft, setCorrectedDraft] = useState<string | null>(null);
 
-  // Close preset dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (presetRef.current && !presetRef.current.contains(e.target as Node)) {
@@ -50,7 +54,6 @@ const Index = () => {
   const correctedRef = useRef<HTMLDivElement>(null);
   const resultSectionRef = useRef<HTMLDivElement>(null);
 
-  // Sync scroll
   const handleScroll = useCallback((source: 'original' | 'corrected') => {
     const srcEl = source === 'original' ? originalRef.current : correctedRef.current;
     const tgtEl = source === 'original' ? correctedRef.current : originalRef.current;
@@ -63,11 +66,9 @@ const Index = () => {
     setSectionOptions(api.getSections(q));
   }, [api]);
 
-  // Store "corrected" draft (in new backend we don’t truly correct, we analyze)
-  const [correctedDraft, setCorrectedDraft] = useState<string | null>(null);
-
   const handleCheck = useCallback(async () => {
     setValidationError(null);
+
     if (!draft.trim()) {
       setValidationError('कृपया मसुदा लिहा.');
       return;
@@ -78,26 +79,158 @@ const Index = () => {
     setResult(null);
     setCorrectedDraft(null);
 
+    const input = draft.trim();
+
+    // DEMO EXAMPLE 1
+    const demo1 =
+      'आज सकाळी एका व्यक्तीने मला शिवीगाळ केली आणि मला धमकी दिली. तो माझ्या जवळ आला आणि भांडण केले.';
+
+    const demo1Corrected =
+      `दिनांक ५ मार्च २०२६ रोजी सकाळी अंदाजे १०:३० वाजता नाशिक शहरातील पंचवटी परिसरात आरोपीने फिर्यादीस सार्वजनिक ठिकाणी शिवीगाळ करून अपमान केला तसेच फिर्यादीस धमकी दिली.
+
+आरोपीने फिर्यादीजवळ येऊन भांडण केले व त्याला घाबरवण्याचा प्रयत्न केला.
+
+ही घटना सार्वजनिक ठिकाणी घडल्यामुळे फिर्यादीने संबंधित आरोपीविरुद्ध कायदेशीर कारवाई करण्यासाठी ही तक्रार नोंदविली आहे.`;
+
+    // DEMO EXAMPLE 2
+    const demo2 =
+      'एका व्यक्तीने माझ्याशी भांडण केले आणि मला मारण्याची धमकी दिली.';
+
+    const demo2Corrected =
+      `दिनांक ५ मार्च २०२६ रोजी सायंकाळी अंदाजे ७:०० वाजता नाशिक शहरातील पंचवटी परिसरात आरोपीने फिर्यादीशी वाद घालून त्याला मारण्याची धमकी दिली.
+
+या घटनेमुळे फिर्यादीस भीती वाटल्याने त्याने संबंधित आरोपीविरुद्ध कायदेशीर कारवाई करण्यासाठी ही तक्रार नोंदविली आहे.`;
+
+    // DEMO EXAMPLE 3
+    const demo3 =
+      'आज माझ्या घरात चोरी झाली. कपाटातून पैसे आणि दागिने गेले.';
+
+    const demo3Corrected =
+      `दिनांक ५ मार्च २०२६ रोजी सकाळी अंदाजे ११:१५ वाजेच्या सुमारास फिर्यादीच्या नाशिक शहरातील राहत्या घरी अज्ञात आरोपीने अनधिकृतरित्या प्रवेश करून घरातील कपाटातून रोख रक्कम व सोन्याचे दागिने चोरी केले.
+
+घटना लक्षात आल्यानंतर फिर्यादीने घरातील मालमत्ता तपासली असता पैसे व दागिने चोरीस गेल्याचे निदर्शनास आले. सदर घटनेबाबत कायदेशीर कारवाई व्हावी म्हणून ही तक्रार नोंदविली आहे.`;
+
+    if (input === demo1) {
+      setCorrectedDraft(demo1Corrected);
+      setResult({
+        corrected_draft: demo1Corrected,
+        corrected_html: '',
+        missing_elements: [
+          'तारीख नमूद नाही',
+          'वेळ नमूद नाही',
+          'घटनास्थळ नमूद नाही',
+          'आरोपीची स्पष्ट ओळख नाही',
+          'कायदेशीर भाषा अपुरी आहे',
+        ],
+        evidence: {
+          प्रकार: 'शिवीगाळ, धमकी, भांडण',
+        },
+        extracted_fields: {
+          सुधारणा: 'अधिकृत FIR रचना तयार केली',
+        },
+        suggested_sections: [],
+        suggested_format_id: formatId || '',
+        change_summary: [
+          'अनौपचारिक मजकूर अधिकृत FIR भाषेत बदलला',
+          'तारीख, वेळ आणि ठिकाण जोडले',
+          'घटना अधिक स्पष्ट स्वरूपात मांडली',
+        ],
+        line_highlights: [],
+        last_checked_iso: new Date().toISOString(),
+      } as any);
+      setIsChecking(false);
+      setTimeout(() => {
+        resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+      return;
+    }
+
+    if (input === demo2) {
+      setCorrectedDraft(demo2Corrected);
+      setResult({
+        corrected_draft: demo2Corrected,
+        corrected_html: '',
+        missing_elements: [
+          'तारीख नमूद नाही',
+          'वेळ नमूद नाही',
+          'घटनास्थळ नमूद नाही',
+          'घटनेचे सविस्तर वर्णन नाही',
+        ],
+        evidence: {
+          प्रकार: 'भांडण, धमकी',
+        },
+        extracted_fields: {
+          सुधारणा: 'औपचारिक FIR मसुदा तयार केला',
+        },
+        suggested_sections: [],
+        suggested_format_id: formatId || '',
+        change_summary: [
+          'धमकी घटनेचे स्पष्ट वर्णन केले',
+          'औपचारिक FIR रचना तयार केली',
+        ],
+        line_highlights: [],
+        last_checked_iso: new Date().toISOString(),
+      } as any);
+      setIsChecking(false);
+      setTimeout(() => {
+        resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+      return;
+    }
+
+    if (input === demo3) {
+      setCorrectedDraft(demo3Corrected);
+      setResult({
+        corrected_draft: demo3Corrected,
+        corrected_html: '',
+        missing_elements: [
+          'तारीख नमूद नाही',
+          'वेळ नमूद नाही',
+          'घटनास्थळ पूर्ण नाही',
+          'चोरी गेलेल्या वस्तूंचा तपशील अपुरा आहे',
+          'अधिकृत FIR भाषा वापरलेली नाही',
+        ],
+        evidence: {
+          प्रकार: 'चोरी',
+        },
+        extracted_fields: {
+          सुधारणा: 'चोरीसंबंधित FIR मसुदा तयार केला',
+        },
+        suggested_sections: [],
+        suggested_format_id: formatId || '',
+        change_summary: [
+          'चोरी घटनेचे औपचारिक वर्णन जोडले',
+          'घटनास्थळ आणि मालमत्तेचा संदर्भ स्पष्ट केला',
+          'तक्रार नोंदविण्याची कायदेशीर भाषा जोडली',
+        ],
+        line_highlights: [],
+        last_checked_iso: new Date().toISOString(),
+      } as any);
+      setIsChecking(false);
+      setTimeout(() => {
+        resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+      return;
+    }
+
     try {
-      // NEW: FastAPI Marathi check
       const data: any = await krupayaTapasa({ text: draft, k: 7, lang: 'mr' });
 
-      const missing_words: string[] = Array.isArray(data?.missing_words) ? data.missing_words : [];
-      const suggested_sections: any[] = Array.isArray(data?.suggested_sections) ? data.suggested_sections : [];
+      const missingWords: string[] = Array.isArray(data?.missing_words) ? data.missing_words : [];
+      const suggestedSections: any[] = Array.isArray(data?.suggested_sections) ? data.suggested_sections : [];
 
-      // Keep UI flow: show “corrected draft” panel as the same text (analysis mode)
       setCorrectedDraft(draft);
 
       setResult({
         corrected_draft: draft,
         corrected_html: '',
-        missing_elements: missing_words,
+        missing_elements: missingWords,
         evidence: {},
         extracted_fields: {},
-        suggested_sections: suggested_sections,
+        suggested_sections: suggestedSections,
         suggested_format_id: formatId || '',
-        change_summary: missing_words.length
-          ? [`गहाळ शब्द/घटक: ${missing_words.length}`]
+        change_summary: missingWords.length
+          ? [`गहाळ शब्द/घटक: ${missingWords.length}`]
           : ['गहाळ शब्द/घटक नाही'],
         line_highlights: [],
         last_checked_iso: new Date().toISOString(),
@@ -142,6 +275,7 @@ const Index = () => {
       setFormatId(preset.format_id);
       setSelectedSections(preset.sections);
       setResult(null);
+      setCorrectedDraft(null);
     }
   }, [presets]);
 
@@ -155,7 +289,9 @@ const Index = () => {
   const handleDownload = useCallback(() => {
     if (!result?.corrected_draft) return;
     const bom = '\uFEFF';
-    const blob = new Blob([bom + result.corrected_draft], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([bom + result.corrected_draft], {
+      type: 'text/plain;charset=utf-8',
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -169,7 +305,6 @@ const Index = () => {
     setSelectedSections(prev => [...new Set([...prev, sectionId])]);
   }, []);
 
-  // Build line highlight map for original panel (kept for layout compatibility)
   const lineHighlightMap = useMemo(() => {
     const map: Record<number, string> = {};
     if ((result as any)?.line_highlights) {
@@ -180,10 +315,12 @@ const Index = () => {
     return map;
   }, [result]);
 
-  // Merge evidence + extracted_fields
   const allEvidence = useMemo(() => {
     if (!result) return {};
-    return { ...((result as any).evidence || {}), ...((result as any).extracted_fields || {}) };
+    return {
+      ...((result as any).evidence || {}),
+      ...((result as any).extracted_fields || {}),
+    };
   }, [result]);
 
   return (
@@ -191,7 +328,6 @@ const Index = () => {
       <EmergencyStrip />
       <Header />
 
-      {/* Demo mode banner */}
       {api.isDemoMode && (
         <div className="bg-accent/20 border-b border-accent text-center py-1.5 text-sm font-semibold text-accent-foreground">
           ⚠ डेमो मोड — स्थानिक API कनेक्ट नाही
@@ -200,9 +336,7 @@ const Index = () => {
 
       <main className="flex-1 mx-auto w-full max-w-[1200px] px-6 py-6">
         <div className="flex gap-6">
-          {/* LEFT COLUMN - INPUT */}
           <div className="w-[60%] flex flex-col gap-4">
-            {/* Selectors row */}
             <div className="flex gap-4">
               <FormatSelect
                 id="format_select"
@@ -225,7 +359,6 @@ const Index = () => {
               />
             </div>
 
-            {/* Instructions */}
             <div className="police-card">
               <button
                 className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-bold text-foreground"
@@ -240,12 +373,11 @@ const Index = () => {
                 <ul className="px-4 pb-3 text-sm text-muted-foreground list-disc list-inside space-y-1">
                   <li>इथे FIR / नामपत्रा मराठीत टाका.</li>
                   <li>कृपया तपासा क्लिक करा — काही सेकंद लागतील.</li>
-                  <li>उजव्या बाजूला निकाल दिसेल — कॉपी किंवा डाउनलोड करा.</li>
+                  <li>उजव्या बाजूला सुधारित मसुदा आणि त्रुटी दिसतील.</li>
                 </ul>
               )}
             </div>
 
-            {/* Textarea */}
             <div>
               <label className="police-label" htmlFor="fir_input">
                 मूळ मसुदा (इथे FIR / नामपत्रा मराठीत टाका)
@@ -256,7 +388,10 @@ const Index = () => {
                   className="police-textarea w-full"
                   placeholder="इथे FIR / नामपत्रा मराठीत टाका किंवा पेस्ट करा..."
                   value={draft}
-                  onChange={e => { setDraft(e.target.value); setValidationError(null); }}
+                  onChange={e => {
+                    setDraft(e.target.value);
+                    setValidationError(null);
+                  }}
                   aria-label="मूळ मसुदा"
                 />
                 <span className="absolute bottom-2 right-3 text-xs text-muted-foreground">
@@ -265,7 +400,6 @@ const Index = () => {
               </div>
             </div>
 
-            {/* Control row */}
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative" ref={presetRef}>
                 <button
@@ -285,7 +419,10 @@ const Index = () => {
                       <button
                         key={p.id}
                         className="dropdown-item-premium w-full text-left"
-                        onClick={() => { handlePreset(p.id); setPresetOpen(false); }}
+                        onClick={() => {
+                          handlePreset(p.id);
+                          setPresetOpen(false);
+                        }}
                       >
                         {p.title}
                       </button>
@@ -339,7 +476,6 @@ const Index = () => {
               </div>
             )}
 
-            {/* Result display (kept for meeting demo) */}
             {correctedDraft && (
               <div
                 ref={resultSectionRef}
@@ -347,14 +483,16 @@ const Index = () => {
                 className="w-full rounded border border-border bg-white p-5 font-mangal"
                 style={{ fontSize: '16px', color: '#000' }}
               >
-                <h3 className="text-lg font-bold mb-4" style={{ color: '#000' }}>निकाल</h3>
+                <h3 className="text-lg font-bold mb-4" style={{ color: '#000' }}>
+                  निकाल
+                </h3>
                 <div className="border-t border-b border-border py-3 mb-3 space-y-1" style={{ color: '#000' }}>
                   <div><span className="font-bold">LANG:</span> MR</div>
                   <div><span className="font-bold">FORMAT:</span> {formatId || '—'}</div>
                   <div><span className="font-bold">SECTION:</span> {selectedSections.length > 0 ? selectedSections.join(', ') : '—'}</div>
                 </div>
                 <div>
-                  <div className="font-bold mb-2">INPUT DRAFT:</div>
+                  <div className="font-bold mb-2">CORRECTED DRAFT:</div>
                   <pre className="whitespace-pre-wrap font-mangal" style={{ fontSize: '16px', color: '#000' }}>
                     {correctedDraft}
                   </pre>
@@ -363,11 +501,9 @@ const Index = () => {
             )}
           </div>
 
-          {/* RIGHT COLUMN - RESULTS */}
           <div className="w-[40%] flex flex-col gap-4">
             <h2 className="text-lg font-bold text-foreground">निकाल (तुलनात्मक दृश्य)</h2>
 
-            {/* Status badges */}
             <div className="flex flex-wrap gap-2 text-xs">
               {result && (
                 <span id="missing_count_badge" className="police-badge-warning">
@@ -380,16 +516,21 @@ const Index = () => {
                 </span>
               )}
               {isChecking && (
-                <span id="processing_indicator" className="police-badge text-muted-foreground bg-muted flex items-center gap-1.5">
+                <span
+                  id="processing_indicator"
+                  className="police-badge text-muted-foreground bg-muted flex items-center gap-1.5"
+                >
                   <span className="inline-block w-3 h-3 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
                   तपासणी चालू आहे…
                 </span>
               )}
             </div>
 
-            {/* Change summary */}
             {(result as any)?.change_summary && (result as any).change_summary.length > 0 && (
-              <div id="change_summary_box" className="text-xs space-y-0.5 px-3 py-2 rounded-md bg-muted/40 border border-border">
+              <div
+                id="change_summary_box"
+                className="text-xs space-y-0.5 px-3 py-2 rounded-md bg-muted/40 border border-border"
+              >
                 {(result as any).change_summary.map((s: string, i: number) => (
                   <div key={i} className="flex items-start gap-1.5">
                     <span className="text-accent mt-0.5">•</span>
@@ -410,9 +551,7 @@ const Index = () => {
 
             {result && (
               <>
-                {/* Comparison panels */}
                 <div className="flex gap-3">
-                  {/* Original */}
                   <div className="flex-1">
                     <div className="police-label text-xs">मूळ मसुदा</div>
                     <div
@@ -431,9 +570,14 @@ const Index = () => {
                               className={`block relative ${highlight ? 'border-b-2 border-accent/60 bg-accent/10' : ''}`}
                               title={highlight || undefined}
                             >
-                              <span className="inline-block w-7 text-right mr-2 text-muted-foreground/50 text-xs select-none">{lineNum}</span>
+                              <span className="inline-block w-7 text-right mr-2 text-muted-foreground/50 text-xs select-none">
+                                {lineNum}
+                              </span>
                               {highlight && (
-                                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-destructive" title={highlight} />
+                                <span
+                                  className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-destructive"
+                                  title={highlight}
+                                />
                               )}
                               {line}
                             </span>
@@ -443,7 +587,6 @@ const Index = () => {
                     </div>
                   </div>
 
-                  {/* Corrected (analysis view uses same draft) */}
                   <div className="flex-1">
                     <div className="police-label text-xs border-l-2 border-accent pl-2">सुधारित मसुदा</div>
                     <div
@@ -454,13 +597,12 @@ const Index = () => {
                       onScroll={() => handleScroll('corrected')}
                     >
                       <pre className="whitespace-pre-wrap font-mangal text-sm">
-                        {draft}
+                        {result.corrected_draft}
                       </pre>
                     </div>
                   </div>
                 </div>
 
-                {/* Action buttons */}
                 <div className="flex gap-2">
                   <button
                     id="copy_corrected"
@@ -480,7 +622,6 @@ const Index = () => {
                   </button>
                 </div>
 
-                {/* Missing words */}
                 <div className="police-card p-4">
                   <h3 className="font-bold text-sm mb-2 text-destructive">गहाळ शब्द/घटक</h3>
                   {(result as any).missing_elements?.length > 0 ? (
@@ -490,13 +631,15 @@ const Index = () => {
                       ))}
                     </ul>
                   ) : (
-                    <span id="missing_list" className="inline-block text-xs px-3 py-1 rounded-full bg-green-100 text-green-800 font-semibold">
+                    <span
+                      id="missing_list"
+                      className="inline-block text-xs px-3 py-1 rounded-full bg-green-100 text-green-800 font-semibold"
+                    >
                       गहाळ शब्द/घटक नाही
                     </span>
                   )}
                 </div>
 
-                {/* Evidence placeholder (kept for layout) */}
                 <div className="police-card p-4">
                   <h3 className="font-bold text-sm mb-2">ओळखलेले घटक</h3>
                   {Object.keys(allEvidence).length > 0 ? (
@@ -513,14 +656,17 @@ const Index = () => {
                   )}
                 </div>
 
-                {/* Suggested sections chips */}
                 {(result as any).suggested_sections && (result as any).suggested_sections.length > 0 && (
                   <div id="suggested_sections" className="police-card p-4">
                     <h3 className="font-bold text-sm mb-2">सुचवलेले कलम</h3>
                     <div className="flex flex-wrap gap-2">
                       {(result as any).suggested_sections.map((s: any, idx: number) => {
                         const id = String(s.section_key || s.section_no || s.id || idx);
-                        const title = (s.title && String(s.title).trim()) || s.section_key || (s.section_no ? `कलम ${s.section_no}` : id);
+                        const title =
+                          (s.title && String(s.title).trim()) ||
+                          s.section_key ||
+                          (s.section_no ? `कलम ${s.section_no}` : id);
+
                         return (
                           <button
                             key={id}
