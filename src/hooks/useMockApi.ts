@@ -47,7 +47,6 @@ export type CheckResult = {
 };
 
 export function useMockApi() {
-  // "demo mode" banner in UI. Keep false unless you intentionally want demo banner.
   const isDemoMode = useMemo(() => false, []);
 
   const formats = useMemo<FormatOption[]>(
@@ -58,9 +57,9 @@ export function useMockApi() {
         description: "FIR मसुदा तपासणी",
       },
       {
-        id: "NAMAPATRA",
-        title: "नामपत्र",
-        description: "नामपत्र मसुदा तपासणी",
+        id: "DOSHAROP",
+        title: "दोषारोप",
+        description: "दोषारोप मसुदा तपासणी",
       },
     ],
     []
@@ -73,6 +72,9 @@ export function useMockApi() {
       { id: "IPC_323", display: "IPC 323", statute: "IPC" },
       { id: "IPC_504", display: "IPC 504", statute: "IPC" },
       { id: "IPC_506", display: "IPC 506", statute: "IPC" },
+      { id: "IPC_379", display: "IPC 379", statute: "IPC" },
+      { id: "IPC_427", display: "IPC 427", statute: "IPC" },
+      { id: "IPC_448", display: "IPC 448", statute: "IPC" },
     ],
     []
   );
@@ -105,7 +107,6 @@ export function useMockApi() {
     return presets;
   }
 
-  // Used by SectionSelect search
   function getSections(q: string): SectionOption[] {
     const s = q.trim().toLowerCase();
     if (!s) return allSections;
@@ -117,7 +118,6 @@ export function useMockApi() {
     );
   }
 
-  // Legacy method—your Index.tsx can ignore this and call FastAPI directly.
   async function suggestSections(_draft: string): Promise<Array<{ section_id: string }>> {
     return [];
   }
