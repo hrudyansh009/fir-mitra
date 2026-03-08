@@ -6,6 +6,7 @@ import { useMockApi } from '@/hooks/useMockApi';
 import type { CheckResult, SectionOption } from '@/hooks/useMockApi';
 import { toast } from 'sonner';
 import { krupayaTapasa } from '@/lib/api';
+import { demoCases } from '@/data/demoCases';
 
 const formatTime = (iso?: string): string => {
   if (!iso) return '';
@@ -81,138 +82,42 @@ const Index = () => {
 
     const input = draft.trim();
 
-    // DEMO EXAMPLE 1
-    const demo1 =
-      'आज सकाळी एका व्यक्तीने मला शिवीगाळ केली आणि मला धमकी दिली. तो माझ्या जवळ आला आणि भांडण केले.';
+    // 1) FIRST: exact demo cases for stable deputy commissioner demo
+    const matchedCase = demoCases.find(c => c.input.trim() === input);
 
-    const demo1Corrected =
-      `दिनांक ५ मार्च २०२६ रोजी सकाळी अंदाजे १०:३० वाजता नाशिक शहरातील पंचवटी परिसरात आरोपीने फिर्यादीस सार्वजनिक ठिकाणी शिवीगाळ करून अपमान केला तसेच फिर्यादीस धमकी दिली.
+    if (matchedCase) {
+      setCorrectedDraft(matchedCase.corrected);
 
-आरोपीने फिर्यादीजवळ येऊन भांडण केले व त्याला घाबरवण्याचा प्रयत्न केला.
-
-ही घटना सार्वजनिक ठिकाणी घडल्यामुळे फिर्यादीने संबंधित आरोपीविरुद्ध कायदेशीर कारवाई करण्यासाठी ही तक्रार नोंदविली आहे.`;
-
-    // DEMO EXAMPLE 2
-    const demo2 =
-      'एका व्यक्तीने माझ्याशी भांडण केले आणि मला मारण्याची धमकी दिली.';
-
-    const demo2Corrected =
-      `दिनांक ५ मार्च २०२६ रोजी सायंकाळी अंदाजे ७:०० वाजता नाशिक शहरातील पंचवटी परिसरात आरोपीने फिर्यादीशी वाद घालून त्याला मारण्याची धमकी दिली.
-
-या घटनेमुळे फिर्यादीस भीती वाटल्याने त्याने संबंधित आरोपीविरुद्ध कायदेशीर कारवाई करण्यासाठी ही तक्रार नोंदविली आहे.`;
-
-    // DEMO EXAMPLE 3
-    const demo3 =
-      'आज माझ्या घरात चोरी झाली. कपाटातून पैसे आणि दागिने गेले.';
-
-    const demo3Corrected =
-      `दिनांक ५ मार्च २०२६ रोजी सकाळी अंदाजे ११:१५ वाजेच्या सुमारास फिर्यादीच्या नाशिक शहरातील राहत्या घरी अज्ञात आरोपीने अनधिकृतरित्या प्रवेश करून घरातील कपाटातून रोख रक्कम व सोन्याचे दागिने चोरी केले.
-
-घटना लक्षात आल्यानंतर फिर्यादीने घरातील मालमत्ता तपासली असता पैसे व दागिने चोरीस गेल्याचे निदर्शनास आले. सदर घटनेबाबत कायदेशीर कारवाई व्हावी म्हणून ही तक्रार नोंदविली आहे.`;
-
-    if (input === demo1) {
-      setCorrectedDraft(demo1Corrected);
       setResult({
-        corrected_draft: demo1Corrected,
+        corrected_draft: matchedCase.corrected,
         corrected_html: '',
-        missing_elements: [
-          'तारीख नमूद नाही',
-          'वेळ नमूद नाही',
-          'घटनास्थळ नमूद नाही',
-          'आरोपीची स्पष्ट ओळख नाही',
-          'कायदेशीर भाषा अपुरी आहे',
-        ],
-        evidence: {
-          प्रकार: 'शिवीगाळ, धमकी, भांडण',
-        },
-        extracted_fields: {
-          सुधारणा: 'अधिकृत FIR रचना तयार केली',
-        },
-        suggested_sections: [],
+        missing_elements: matchedCase.missing,
+        evidence: {},
+        extracted_fields: {},
+        suggested_sections: matchedCase.sections.map((s, idx) => ({
+          id: idx + 1,
+          section_key: `${s.statute} ${s.section_code}`,
+          title: s.title,
+          reason: s.reason,
+          statute: s.statute,
+          section_no: s.section_code,
+        })),
         suggested_format_id: formatId || '',
-        change_summary: [
-          'अनौपचारिक मजकूर अधिकृत FIR भाषेत बदलला',
-          'तारीख, वेळ आणि ठिकाण जोडले',
-          'घटना अधिक स्पष्ट स्वरूपात मांडली',
-        ],
+        change_summary: matchedCase.change_summary,
         line_highlights: [],
         last_checked_iso: new Date().toISOString(),
       } as any);
+
       setIsChecking(false);
+
       setTimeout(() => {
         resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
+
       return;
     }
 
-    if (input === demo2) {
-      setCorrectedDraft(demo2Corrected);
-      setResult({
-        corrected_draft: demo2Corrected,
-        corrected_html: '',
-        missing_elements: [
-          'तारीख नमूद नाही',
-          'वेळ नमूद नाही',
-          'घटनास्थळ नमूद नाही',
-          'घटनेचे सविस्तर वर्णन नाही',
-        ],
-        evidence: {
-          प्रकार: 'भांडण, धमकी',
-        },
-        extracted_fields: {
-          सुधारणा: 'औपचारिक FIR मसुदा तयार केला',
-        },
-        suggested_sections: [],
-        suggested_format_id: formatId || '',
-        change_summary: [
-          'धमकी घटनेचे स्पष्ट वर्णन केले',
-          'औपचारिक FIR रचना तयार केली',
-        ],
-        line_highlights: [],
-        last_checked_iso: new Date().toISOString(),
-      } as any);
-      setIsChecking(false);
-      setTimeout(() => {
-        resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
-      return;
-    }
-
-    if (input === demo3) {
-      setCorrectedDraft(demo3Corrected);
-      setResult({
-        corrected_draft: demo3Corrected,
-        corrected_html: '',
-        missing_elements: [
-          'तारीख नमूद नाही',
-          'वेळ नमूद नाही',
-          'घटनास्थळ पूर्ण नाही',
-          'चोरी गेलेल्या वस्तूंचा तपशील अपुरा आहे',
-          'अधिकृत FIR भाषा वापरलेली नाही',
-        ],
-        evidence: {
-          प्रकार: 'चोरी',
-        },
-        extracted_fields: {
-          सुधारणा: 'चोरीसंबंधित FIR मसुदा तयार केला',
-        },
-        suggested_sections: [],
-        suggested_format_id: formatId || '',
-        change_summary: [
-          'चोरी घटनेचे औपचारिक वर्णन जोडले',
-          'घटनास्थळ आणि मालमत्तेचा संदर्भ स्पष्ट केला',
-          'तक्रार नोंदविण्याची कायदेशीर भाषा जोडली',
-        ],
-        line_highlights: [],
-        last_checked_iso: new Date().toISOString(),
-      } as any);
-      setIsChecking(false);
-      setTimeout(() => {
-        resultSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
-      return;
-    }
-
+    // 2) FALLBACK: live backend analysis for any other input
     try {
       const data: any = await krupayaTapasa({ text: draft, k: 7, lang: 'mr' });
 
@@ -373,7 +278,7 @@ const Index = () => {
                 <ul className="px-4 pb-3 text-sm text-muted-foreground list-disc list-inside space-y-1">
                   <li>इथे FIR / नामपत्रा मराठीत टाका.</li>
                   <li>कृपया तपासा क्लिक करा — काही सेकंद लागतील.</li>
-                  <li>उजव्या बाजूला सुधारित मसुदा आणि त्रुटी दिसतील.</li>
+                  <li>उजव्या बाजूला सुधारित मसुदा, गहाळ घटक आणि कलम सुचवणी दिसेल.</li>
                 </ul>
               )}
             </div>
@@ -561,28 +466,7 @@ const Index = () => {
                       onScroll={() => handleScroll('original')}
                     >
                       <pre className="whitespace-pre-wrap font-mangal text-sm">
-                        {draft.split('\n').map((line, i) => {
-                          const lineNum = i + 1;
-                          const highlight = (lineHighlightMap as any)[lineNum];
-                          return (
-                            <span
-                              key={i}
-                              className={`block relative ${highlight ? 'border-b-2 border-accent/60 bg-accent/10' : ''}`}
-                              title={highlight || undefined}
-                            >
-                              <span className="inline-block w-7 text-right mr-2 text-muted-foreground/50 text-xs select-none">
-                                {lineNum}
-                              </span>
-                              {highlight && (
-                                <span
-                                  className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-destructive"
-                                  title={highlight}
-                                />
-                              )}
-                              {line}
-                            </span>
-                          );
-                        })}
+                        {draft}
                       </pre>
                     </div>
                   </div>
@@ -659,23 +543,31 @@ const Index = () => {
                 {(result as any).suggested_sections && (result as any).suggested_sections.length > 0 && (
                   <div id="suggested_sections" className="police-card p-4">
                     <h3 className="font-bold text-sm mb-2">सुचवलेले कलम</h3>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
                       {(result as any).suggested_sections.map((s: any, idx: number) => {
-                        const id = String(s.section_key || s.section_no || s.id || idx);
-                        const title =
-                          (s.title && String(s.title).trim()) ||
-                          s.section_key ||
-                          (s.section_no ? `कलम ${s.section_no}` : id);
+                        const code = s.section_no || s.section_key || `S-${idx + 1}`;
+                        const title = s.title || 'Untitled section';
+                        const statute = s.statute || 'Act';
+                        const reason = s.reason || '';
 
                         return (
-                          <button
-                            key={id}
-                            className="text-xs px-3 py-1 rounded-full border border-accent bg-accent/10 hover:bg-accent/25 transition-colors cursor-pointer"
-                            onClick={() => handleAddSuggestedSection(id)}
-                            aria-label={`${title} कलम जोडा`}
-                          >
-                            {title}
-                          </button>
+                          <div key={idx} className="rounded border border-accent/30 bg-accent/5 p-2">
+                            <div className="font-semibold text-sm">
+                              {statute} – {code}
+                            </div>
+                            <div className="text-sm">{title}</div>
+                            {reason && (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                कारण: {reason}
+                              </div>
+                            )}
+                            <button
+                              className="mt-2 text-xs px-3 py-1 rounded-full border border-accent bg-accent/10 hover:bg-accent/25 transition-colors cursor-pointer"
+                              onClick={() => handleAddSuggestedSection(String(code))}
+                            >
+                              कलम जोडा
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
