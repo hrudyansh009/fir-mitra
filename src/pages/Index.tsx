@@ -82,7 +82,7 @@ const Index = () => {
 
     const input = draft.trim();
 
-    // 1) FIRST: exact demo cases for stable deputy commissioner demo
+    // 1) Stable demo cases first
     const matchedCase = demoCases.find(c => c.input.trim() === input);
 
     if (matchedCase) {
@@ -117,17 +117,21 @@ const Index = () => {
       return;
     }
 
-    // 2) FALLBACK: live backend analysis for any other input
+    // 2) Backend fallback
     try {
       const data: any = await krupayaTapasa({ text: draft, k: 7, lang: 'mr' });
 
       const missingWords: string[] = Array.isArray(data?.missing_words) ? data.missing_words : [];
       const suggestedSections: any[] = Array.isArray(data?.suggested_sections) ? data.suggested_sections : [];
+      const backendCorrectedDraft: string =
+        typeof data?.corrected_draft === 'string' && data.corrected_draft.trim()
+          ? data.corrected_draft
+          : draft;
 
-      setCorrectedDraft(draft);
+      setCorrectedDraft(backendCorrectedDraft);
 
       setResult({
-        corrected_draft: draft,
+        corrected_draft: backendCorrectedDraft,
         corrected_html: '',
         missing_elements: missingWords,
         evidence: {},
@@ -276,7 +280,7 @@ const Index = () => {
               </button>
               {instructionsOpen && (
                 <ul className="px-4 pb-3 text-sm text-muted-foreground list-disc list-inside space-y-1">
-                  <li>इथे FIR / दोषारोप मराठीत टाका.</li>
+                  <li>इथे FIR / दोषारोप मसुदा मराठीत लिहा.</li>
                   <li>कृपया तपासा क्लिक करा — काही सेकंद लागतील.</li>
                   <li>उजव्या बाजूला सुधारित मसुदा, गहाळ घटक आणि कलम सुचवणी दिसेल.</li>
                 </ul>
@@ -285,13 +289,13 @@ const Index = () => {
 
             <div>
               <label className="police-label" htmlFor="fir_input">
-                मूळ मसुदा (इथे FIR / दोषारोप मराठीत टाका)
+                मूळ मसुदा (इथे FIR / दोषारोप मसुदा लिहा)
               </label>
               <div className="relative">
                 <textarea
                   id="fir_input"
                   className="police-textarea w-full"
-                  placeholder="इथे FIR / दोषारोप मराठीत टाका किंवा पेस्ट करा..."
+                  placeholder="इथे FIR / दोषारोप मसुदा लिहा..."
                   value={draft}
                   onChange={e => {
                     setDraft(e.target.value);
@@ -466,7 +470,28 @@ const Index = () => {
                       onScroll={() => handleScroll('original')}
                     >
                       <pre className="whitespace-pre-wrap font-mangal text-sm">
-                        {draft}
+                        {draft.split('\n').map((line, i) => {
+                          const lineNum = i + 1;
+                          const highlight = (lineHighlightMap as any)[lineNum];
+                          return (
+                            <span
+                              key={i}
+                              className={`block relative ${highlight ? 'border-b-2 border-accent/60 bg-accent/10' : ''}`}
+                              title={highlight || undefined}
+                            >
+                              <span className="inline-block w-7 text-right mr-2 text-muted-foreground/50 text-xs select-none">
+                                {lineNum}
+                              </span>
+                              {highlight && (
+                                <span
+                                  className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-destructive"
+                                  title={highlight}
+                                />
+                              )}
+                              {line}
+                            </span>
+                          );
+                        })}
                       </pre>
                     </div>
                   </div>
@@ -481,7 +506,7 @@ const Index = () => {
                       onScroll={() => handleScroll('corrected')}
                     >
                       <pre className="whitespace-pre-wrap font-mangal text-sm">
-                        {result.corrected_draft}
+                        {result?.corrected_draft || draft}
                       </pre>
                     </div>
                   </div>
