@@ -276,7 +276,7 @@ const Index = () => {
               </button>
               {instructionsOpen && (
                 <ul className="px-4 pb-3 text-sm text-muted-foreground list-disc list-inside space-y-1">
-                  <li>इथे FIR / नामपत्रा मराठीत टाका.</li>
+                  <li>इथे FIR / दोषारोप मराठीत टाका.</li>
                   <li>कृपया तपासा क्लिक करा — काही सेकंद लागतील.</li>
                   <li>उजव्या बाजूला सुधारित मसुदा, गहाळ घटक आणि कलम सुचवणी दिसेल.</li>
                 </ul>
@@ -285,13 +285,13 @@ const Index = () => {
 
             <div>
               <label className="police-label" htmlFor="fir_input">
-                मूळ मसुदा (इथे FIR / नामपत्रा मराठीत टाका)
+                मूळ मसुदा (इथे FIR / दोषारोप मराठीत टाका)
               </label>
               <div className="relative">
                 <textarea
                   id="fir_input"
                   className="police-textarea w-full"
-                  placeholder="इथे FIR / नामपत्रा मराठीत टाका किंवा पेस्ट करा..."
+                  placeholder="इथे FIR / दोषारोप मराठीत टाका किंवा पेस्ट करा..."
                   value={draft}
                   onChange={e => {
                     setDraft(e.target.value);
